@@ -37,9 +37,9 @@ typedef enum { TypeInt = 0, TypeReal, TypeVarChar } AttrType;
 typedef unsigned AttrLength;
 
 struct Attribute {
-    string   name;     // attribute name
-    AttrType type;     // attribute type
-    AttrLength length; // attribute length
+	string   name;     // attribute name
+	AttrType type;     // attribute type
+	AttrLength length; // attribute length
 };
 
 // function declarations
@@ -55,11 +55,11 @@ void setUpNewPage(const void *newPage, const void *data, int length, FileHandle 
 // Comparison Operator (NOT needed for part 1 of the project)
 typedef enum { NO_OP = 0,  // no condition
 		   EQ_OP,      // =
-           LT_OP,      // <
-           GT_OP,      // >
-           LE_OP,      // <=
-           GE_OP,      // >=
-           NE_OP,      // !=
+		   LT_OP,      // <
+		   GT_OP,      // >
+		   LE_OP,      // <=
+		   GE_OP,      // >=
+		   NE_OP,      // !=
 } CompOp;
 
 
@@ -136,12 +136,12 @@ IMPORTANT, PLEASE READ: All methods below this comment (other than the construct
 
   // scan returns an iterator to allow the caller to go through the results one by one. 
   RC scan(FileHandle &fileHandle,
-      const vector<Attribute> &recordDescriptor,
-      const string &conditionAttribute,
-      const CompOp compOp,                  // comparision type such as "<" and "="
-      const void *value,                    // used in the comparison
-      const vector<string> &attributeNames, // a list of projected attributes
-      RBFM_ScanIterator &rbfm_ScanIterator);
+	  const vector<Attribute> &recordDescriptor,
+	  const string &conditionAttribute,
+	  const CompOp compOp,                  // comparision type such as "<" and "="
+	  const void *value,                    // used in the comparison
+	  const vector<string> &attributeNames, // a list of projected attributes
+	  RBFM_ScanIterator &rbfm_ScanIterator);
 
 public:
 

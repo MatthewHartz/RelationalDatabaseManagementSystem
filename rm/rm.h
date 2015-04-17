@@ -11,6 +11,11 @@ using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
 
+// function declarations
+void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<Attribute> &descriptor);
+void prepareTablesRecord(const int id, const string &table, const string &file, void *buffer);
+void prepareColumnsRecord(const int id, const string &name, const AttrType type, const int length, const int position, void *buffer);
+
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
 public:
@@ -75,6 +80,7 @@ protected:
 
 private:
   static RelationManager *_rm;
+  RecordBasedFileManager *rbfm;
 };
 
 #endif
