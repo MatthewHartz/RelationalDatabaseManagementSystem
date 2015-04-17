@@ -88,11 +88,12 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 		numRecords++;
 		memcpy((char *) page + N_OFFSET, &numRecords, sizeof(int));
 
-		int freeSpace;
-		memcpy(&freeSpace, (char *) page + F_OFFSET, sizeof(int));
-		freeSpace = freeSpace - (length + SLOT_SIZE);
+		int freeSpaceOffset;
+		memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
+		freeSpaceOffset += length;
+        int freeSpace = PAGE_SIZE - (freeSpaceOffset + (numRecords * SLOT_SIZE) + META_INFO);
 		fileHandle.freeSpace[rid.pageNum] = freeSpace;
-		memcpy((char *) page + F_OFFSET, &freeSpace, sizeof(int));
+		memcpy((char *) page + F_OFFSET, &freeSpaceOffset, sizeof(int));
 		
 		// now we need to enter in the slot directory entry
 		int slotEntryOffset = N_OFFSET - (numRecords * SLOT_SIZE); 
@@ -182,8 +183,8 @@ std::string extractType(const void *data, int *offset, AttrType t, AttrLength l)
 		
 		// now generate a C string with the same length plus 1
 		*offset += sizeof(int);
-		const char* s = new const char[varCharLength];
-		memcpy(&s, (char *) data + *offset, varCharLength);
+		char* s = new char[varCharLength];
+		memcpy(s, (char *) data + *offset, varCharLength);
 
 		std::string str(s);
 		*offset += varCharLength;
@@ -237,8 +238,7 @@ int findOpenSlot(FileHandle &handle, int size, RID &rid) {
 	// if we get here we have a page current page and we need to get its freespace
 	void *page = handle.currentPage; 
 	
-	int freeSpace;
-	memcpy(&freeSpace, (char *) page + F_OFFSET, sizeof(int));
+	int freeSpace = handle.freeSpace[pageNum];
 	if (freeSpace > (size + SLOT_SIZE)) {
 		// the current page has enough space to fit a new record
 		rid.pageNum = pageNum;
@@ -268,12 +268,16 @@ int findOpenSlot(FileHandle &handle, int size, RID &rid) {
 
 
 int getFreeSpaceOffset(const void *data, RID &rid) {
-	// here we just need to add up all the lengths of the records and that will
-	// give us the offset for the record.  We also need to add a new slot directory entry
 	int numRecords;
 	memcpy(&numRecords, (char *) data + N_OFFSET, sizeof(int));
 	rid.slotNum = numRecords; 
-	
+    
+    int freeSpaceOffset;
+    memcpy(&freeSpaceOffset, (char *) data + F_OFFSET, sizeof(int));    
+
+    return freeSpaceOffset;
+    
+    /* 
 	int lengthOfRecord = 0;
 	int lastRecordOffset = 0;
 	
@@ -283,6 +287,7 @@ int getFreeSpaceOffset(const void *data, RID &rid) {
 	memcpy(&lastRecordOffset, (char *) data + slotOffset, sizeof(int));
 	memcpy(&lengthOfRecord, (char *) data + slotOffset + sizeof(int), sizeof(int)); 
 	return lastRecordOffset + lengthOfRecord; 
+    */
 }
 
 void setUpNewPage(const void *newPage, const void *data, int length, FileHandle &handle) {
@@ -302,11 +307,12 @@ void setUpNewPage(const void *newPage, const void *data, int length, FileHandle 
 	slotOneOffset += sizeof(int);
 	memcpy((char *) newPage + slotOneOffset, &length, sizeof(int));
 
-	// now we need to enter in the free space
-	int freeSpace = PAGE_SIZE - (length + (numRecords * SLOT_SIZE) + SLOT_SIZE);
+	// have the FreeSpaceOffset point to the end of the first record
+    int freeSpaceOffset = length;
+    int freeSpace = PAGE_SIZE - (freeSpaceOffset + SLOT_SIZE + META_INFO);
 
 	// lets setup the freeSpace list in th fileHandle, we don't need a page number 
 	// because we are making a new page and we just append the end of the list
 	handle.freeSpace.push_back(freeSpace); 
-	memcpy((char *) newPage + F_OFFSET, &freeSpace, sizeof(int));
+	memcpy((char *) newPage + F_OFFSET, &freeSpaceOffset, sizeof(int));
 }
