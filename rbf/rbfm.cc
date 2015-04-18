@@ -91,7 +91,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 		int freeSpaceOffset;
 		memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
 		freeSpaceOffset += length;
-        int freeSpace = PAGE_SIZE - (freeSpaceOffset + (numRecords * SLOT_SIZE) + META_INFO);
+		int freeSpace = PAGE_SIZE - (freeSpaceOffset + (numRecords * SLOT_SIZE) + META_INFO);
 		fileHandle.freeSpace[rid.pageNum] = freeSpace;
 		memcpy((char *) page + F_OFFSET, &freeSpaceOffset, sizeof(int));
 		
@@ -271,13 +271,13 @@ int getFreeSpaceOffset(const void *data, RID &rid) {
 	int numRecords;
 	memcpy(&numRecords, (char *) data + N_OFFSET, sizeof(int));
 	rid.slotNum = numRecords; 
-    
-    int freeSpaceOffset;
-    memcpy(&freeSpaceOffset, (char *) data + F_OFFSET, sizeof(int));    
+	
+	int freeSpaceOffset;
+	memcpy(&freeSpaceOffset, (char *) data + F_OFFSET, sizeof(int));    
 
-    return freeSpaceOffset;
-    
-    /* 
+	return freeSpaceOffset;
+	
+	/* 
 	int lengthOfRecord = 0;
 	int lastRecordOffset = 0;
 	
@@ -287,7 +287,7 @@ int getFreeSpaceOffset(const void *data, RID &rid) {
 	memcpy(&lastRecordOffset, (char *) data + slotOffset, sizeof(int));
 	memcpy(&lengthOfRecord, (char *) data + slotOffset + sizeof(int), sizeof(int)); 
 	return lastRecordOffset + lengthOfRecord; 
-    */
+	*/
 }
 
 void setUpNewPage(const void *newPage, const void *data, int length, FileHandle &handle) {
@@ -308,8 +308,8 @@ void setUpNewPage(const void *newPage, const void *data, int length, FileHandle 
 	memcpy((char *) newPage + slotOneOffset, &length, sizeof(int));
 
 	// have the FreeSpaceOffset point to the end of the first record
-    int freeSpaceOffset = length;
-    int freeSpace = PAGE_SIZE - (freeSpaceOffset + SLOT_SIZE + META_INFO);
+	int freeSpaceOffset = length;
+	int freeSpace = PAGE_SIZE - (freeSpaceOffset + SLOT_SIZE + META_INFO);
 
 	// lets setup the freeSpace list in th fileHandle, we don't need a page number 
 	// because we are making a new page and we just append the end of the list

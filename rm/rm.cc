@@ -26,8 +26,9 @@ RC RelationManager::createCatalog()
 	const string columnsName = "Columns";
 
 	// Create system tables
-	rbfm->createFile(tablesName);
-	rbfm->createFile(columnsName);
+	if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) {
+		return -1;
+	}
 
 	// Create file handles
 	FileHandle tablesHandle;
@@ -54,6 +55,9 @@ RC RelationManager::createCatalog()
 	addAttributeToDesc("table-id", TypeInt, (AttrLength)4, tablesDesc);
 	addAttributeToDesc("table-name", TypeVarChar, (AttrLength)50, tablesDesc);
 	addAttributeToDesc("file-name", TypeInt, (AttrLength)4, tablesDesc);
+
+	setTablesDesc(tablesDesc);
+	setColumnsDesc(columnsDesc);
 
 	RID rid;
 	void* buffer = malloc(120);
@@ -102,16 +106,96 @@ RC RelationManager::createCatalog()
 
 RC RelationManager::deleteCatalog()
 {
-	return -1;
+	columnsDescriptor.clear();
+	tablesDescriptor.clear();
+
+	// return -1 if error on destroy file
+	if (rbfm->destroyFile("Tables") == -1 || rbfm->destroyFile("Columns") == -1) return -1;
+
+	return 0;
 }
 
 RC RelationManager::createTable(const string &tableName, const vector<Attribute> &attrs)
 {
-	return -1;
+	// Create the new table file
+	rbfm->createFile(tableName);
+
+	// Open the "tables" file
+	FileHandle tablesHandle;
+	if (rbfm->openFile("Tables", tablesHandle) == -1) {
+		return -1;
+	}
+
+	RID rid;
+	void* buffer = malloc(120);
+
+	// Get number of records currently in the tables table
+	tablesHandle.infile->seekg(0, ios::end);
+	int length = tablesHandle.infile->tellg();
+
+	int numPages = length / PAGE_SIZE;
+	int largestTableId = 0;
+
+	// search for the largest table id through all the pages
+	for (int i = 0; i < numPages; i++) {
+		void* pageData = malloc(PAGE_SIZE);
+		tablesHandle.readPage(i, pageData); 
+
+		int numRecordsOnPage;
+		memcpy(&numRecordsOnPage, (char*)pageData + N_OFFSET, sizeof(int));
+
+		// Iterate over all the records on page looking for the largest table id
+		int recordNumber = 0;
+		int slotNumber = 1;
+		while (recordNumber < numRecordsOnPage) {
+			int slotLength;
+			int slotOffset;
+			int slotPosition = N_OFFSET - (slotNumber * (sizeof(int) * 2));
+
+			memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
+			memcpy(&slotLength, (char*)pageData + slotPosition + 4, sizeof(int));
+
+			// record exists in this slot
+			if (slotLength > 0) {
+				// read the first attribute (table-id) and test if that value is larger that the current max
+				int tableId;
+				memcpy(&tableId, (char*)pageData + slotOffset + 1, sizeof(int));
+
+				if (tableId > largestTableId) largestTableId = tableId;
+
+				recordNumber++;
+			}
+
+			// move to next slot
+			slotNumber++;
+		}
+	}
+
+	// Add table desc to tables
+	prepareTablesRecord(largestTableId + 1, tableName, tableName, buffer);
+	rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
+
+	// Close tables file
+	rbfm->closeFile(tablesHandle);
+
+	// Open "columns" file
+	FileHandle columnsHandle;
+	if (rbfm->openFile("Columns", columnsHandle) == -1) {
+		return -1;
+	}
+
+
+
+	return 0;
 }
 
 RC RelationManager::deleteTable(const string &tableName)
 {
+	// Get table id from tables
+	// Remove from tables
+	// Use table id from tables to delete from columns
+	// Destroy file
+
 	return -1;
 }
 

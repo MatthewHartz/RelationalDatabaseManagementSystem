@@ -67,6 +67,11 @@ public:
       const vector<string> &attributeNames, // a list of projected attributes
       RM_ScanIterator &rm_ScanIterator);
 
+  vector<Attribute> getTablesDesc() { return this->tablesDescriptor; }
+  vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
+  void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
+  void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
+
 // Extra credit work (10 points)
 public:
   RC dropAttribute(const string &tableName, const string &attributeName);
@@ -81,6 +86,8 @@ protected:
 private:
   static RelationManager *_rm;
   RecordBasedFileManager *rbfm;
+  vector<Attribute> tablesDescriptor;
+  vector<Attribute> columnsDescriptor;
 };
 
 #endif
