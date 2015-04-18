@@ -88,6 +88,8 @@ private:
   RecordBasedFileManager *rbfm;
   vector<Attribute> tablesDescriptor;
   vector<Attribute> columnsDescriptor;
+
+  RC RelationManager::getTableIdByName(const string &tableName, int &tableId);
 };
 
 #endif

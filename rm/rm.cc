@@ -25,10 +25,7 @@ RC RelationManager::createCatalog()
 	const string tablesName = "Tables";
 	const string columnsName = "Columns";
 
-	// Create system tables
-	if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) {
-		return -1;
-	}
+	if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) return -1;
 
 	//Initialize descriptors
 	vector<Attribute> columnsDesc;
@@ -52,8 +49,8 @@ RC RelationManager::createCatalog()
 	RID rid;
 	void* buffer = malloc(120);
 
-	createTable("Tables", tablesDesc);
-	createTable("Columns", columnsDesc);
+	// Creates system tables, if error occurs in either createTable call, returns -1
+	if (createTable("Tables", tablesDesc) == -1 || createTable("Columns", columnsDesc) == -1) return -1;
 
 	return 0;
 }
@@ -89,6 +86,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
 	int numPages = length / PAGE_SIZE;
 	int largestTableId = 0; // Will be used for both inserting into tables and columns
+	void* record = malloc(120); // will be used to store each record
 
 	// search for the largest table id through all the pages
 	for (int i = 0; i < numPages; i++) {
@@ -101,23 +99,33 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 		// Iterate over all the records on page looking for the largest table id
 		int recordNumber = 0;
 		int slotNumber = 1;
+
+
 		while (recordNumber < numRecordsOnPage) {
-			int slotLength;
+			//int slotLength;
 			int slotOffset;
 			int slotPosition = N_OFFSET - (slotNumber * (sizeof(int) * 2));
 
 			memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
-			memcpy(&slotLength, (char*)pageData + slotPosition + 4, sizeof(int));
 
 			// record exists in this slot
-			if (slotLength > 0) {
+			if (slotOffset >= 0) {
+
+				rid.pageNum = i;
+				rid.slotNum = slotNumber - 1;
+
 				// read the first attribute (table-id) and test if that value is larger that the current max
+				rbfm->readRecord(tablesHandle, getTablesDesc(), rid, record);
 				int tableId;
-				memcpy(&tableId, (char*)pageData + slotOffset + 1, sizeof(int));
+				memcpy(&tableId, (char*)record + 1, sizeof(int));
 
 				if (tableId > largestTableId) largestTableId = tableId;
 
 				recordNumber++;
+			}
+			// TODO: Add code to handle a table row that is updated onto a new page
+			else {
+
 			}
 
 			// move to next slot
@@ -146,17 +154,79 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
 	rbfm->closeFile(columnsHandle);
 
+	delete record;
 	return 0;
 }
 
 RC RelationManager::deleteTable(const string &tableName)
 {
-	// Get table id from tables
+	int tableId;
+
+	// Get table id
+	if (getTableIdByName(tableName, tableId) == -1) return -1;
+
 	// Remove from tables
+	// Open the "tables" file
+	FileHandle tablesHandle;
+	if (rbfm->openFile("Tables", tablesHandle) == -1) {
+		return -1;
+	}
+
+	RID rid;
+	void* buffer = malloc(120);
+
+	// Get number of records currently in the tables table
+	tablesHandle.infile->seekg(0, ios::end);
+	int length = tablesHandle.infile->tellg();
+
+	int numPages = length / PAGE_SIZE;
+	void* record = malloc(120); // will be used to store each record
+
+	// search for the record with the correct ID then remove it
+	for (int i = 0; i < numPages; i++) {
+		void* pageData = malloc(PAGE_SIZE);
+		tablesHandle.readPage(i, pageData);
+
+		int numRecordsOnPage;
+		memcpy(&numRecordsOnPage, (char*)pageData + N_OFFSET, sizeof(int));
+
+		// Iterate over all the records on page looking for the record that matches the table name
+		int recordNumber = 0;
+		int slotNumber = 1;
+		while (recordNumber < numRecordsOnPage) {
+			//int slotLength;
+			int slotOffset;
+			int slotPosition = N_OFFSET - (slotNumber * (sizeof(int)* 2));
+
+			memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
+
+			// record exists in this slot
+			if (slotOffset >= 0) {
+				rid.pageNum = i;
+				rid.slotNum = slotNumber - 1;
+
+				rbfm->readRecord(tablesHandle, getTablesDesc(), rid, record);
+
+				int id;
+				memcpy(&id, (char*)record + 1, sizeof(int)); // we know that the table-id immediately follows the null indicator
+
+				if (id == tableId) {
+					rbfm->deleteRecord(tablesHandle, getTablesDesc(), rid);
+				}
+
+				recordNumber++;
+			}
+
+			// move to next slot
+			slotNumber++;
+		}
+	}
+
+	// TODO
 	// Use table id from tables to delete from columns
 	// Destroy file
 
-	return -1;
+	return 0;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
@@ -280,4 +350,104 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
 	memcpy((char *)buffer + offset, &position, sizeof(int));
 	offset += sizeof(int);
+}
+
+RC RelationManager::getTableIdByName(const string &tableName, int &tableId) {
+	// Get table id from tables
+	int tableNameLength = tableName.size();
+
+	// Open the "tables" file
+	FileHandle tablesHandle;
+	if (rbfm->openFile("Tables", tablesHandle) == -1) {
+		return -1;
+	}
+
+	RID rid;
+
+	// Determine which index is table-name in tabledesc
+	vector<Attribute> desc = getTablesDesc();
+	string columnName = "table-name";
+	int columnNumber = -1;
+
+	for (int i = 0; i < desc.size(); i++) {
+		if (columnName.compare(desc[i].name) == 0) {
+			columnNumber = i;
+		}
+	}
+
+	// could not find the table-name in the descriptor
+	if (columnNumber == -1) return -1;
+
+	// Get number of records currently in the tables table
+	tablesHandle.infile->seekg(0, ios::end);
+	int length = tablesHandle.infile->tellg();
+
+	int numPages = length / PAGE_SIZE;
+	void* record = malloc(120); // will be used to store each record
+	int id;
+
+	// search for the record with the same table-name property	
+	for (int i = 0; i < numPages; i++) {
+		void* pageData = malloc(PAGE_SIZE);
+		tablesHandle.readPage(i, pageData);
+
+		int numRecordsOnPage;
+		memcpy(&numRecordsOnPage, (char*)pageData + N_OFFSET, sizeof(int));
+
+		// Iterate over all the records on page looking for the record that matches the table name
+		int recordNumber = 0;
+		int slotNumber = 1;
+		while (recordNumber < numRecordsOnPage) {
+			//int slotLength;
+			int slotOffset;
+			int slotPosition = N_OFFSET - (slotNumber * (sizeof(int)* 2));
+
+			memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
+
+			// record exists in this slot
+			if (slotOffset >= 0) {
+				rid.pageNum = i;
+				rid.slotNum = slotNumber - 1;
+
+				rbfm->readRecord(tablesHandle, desc, rid, record);
+
+				// generate the offset for the string name
+				int offset = 1; // compensate for the null indicator
+				int thisStringLength = 0;
+
+				for (int j = 0; j <= columnNumber; j++) {
+					int attrLen = sizeof(int); // Attribute length is defaulted to sizeof int unless TypeVarChar modifies it
+					char* attrName = new char[desc[j].length];
+					if (desc[j].type == TypeVarChar) {
+						memcpy(&attrLen, (char*)record + offset, sizeof(int));
+						offset += sizeof(int);
+						memcpy(attrName, (char*)record + offset, attrLen);
+						attrName[attrLen] = '\0';
+
+					}
+
+					// table-id column
+					if (j == 0) {
+						memcpy(&id, (char*)record + offset, sizeof(int));
+					}
+
+					if (j == columnNumber && attrLen == tableNameLength && strcmp((char*)attrName, tableName.c_str()) == 0) {
+						tableId = id;
+						delete record;
+						return 0;
+					}
+
+					offset += attrLen;
+				}
+
+				recordNumber++;
+			}
+
+			// move to next slot
+			slotNumber++;
+		}
+	}
+
+	delete record;
+	return -1;
 }

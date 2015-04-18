@@ -21,6 +21,8 @@ int main()
   rc = createTable("tbl_employee");
   assert (rc == success && "Creating a table should not fail.");
 
+  rc = rm->deleteTable("tbl_employee");
+
   // Delete the actual file and create Table tbl_employee
   remove("tbl_employee2");
 
