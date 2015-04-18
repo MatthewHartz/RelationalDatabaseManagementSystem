@@ -30,16 +30,6 @@ RC RelationManager::createCatalog()
 		return -1;
 	}
 
-	// Create file handles
-	FileHandle tablesHandle;
-	FileHandle columnsHandle;
-
-	// Open files
-	if (rbfm->openFile(tablesName, tablesHandle) == -1 
-		|| rbfm->openFile(columnsName, columnsHandle) == -1) {
-		return -1;
-	}
-
 	//Initialize descriptors
 	vector<Attribute> columnsDesc;
 	vector<Attribute> tablesDesc;
@@ -62,45 +52,9 @@ RC RelationManager::createCatalog()
 	RID rid;
 	void* buffer = malloc(120);
 
-	// Insert data into Tables
-	prepareTablesRecord(1, tablesName, tablesName, buffer);
-	rbfm->insertRecord(tablesHandle, tablesDesc, buffer, rid);
+	createTable("Tables", tablesDesc);
+	createTable("Columns", columnsDesc);
 
-	prepareTablesRecord(2, columnsName, columnsName, buffer);
-	rbfm->insertRecord(tablesHandle, tablesDesc, buffer, rid);
-
-	// Insert data into Columns
-	prepareColumnsRecord(1, "table-id", TypeInt, 4, 1, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "table-name", TypeVarChar, 50, 2, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "file-name", TypeVarChar, 50, 3, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "table-id", TypeInt, 4, 1, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "column-name", TypeVarChar, 50, 2, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "column-type", TypeInt, 4, 3, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "column-length", TypeInt, 4, 4, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	prepareColumnsRecord(1, "column-position", TypeInt, 4, 5, buffer);
-	rbfm->insertRecord(columnsHandle, columnsDesc, buffer, rid);
-
-	// Close files
-	if (rbfm->closeFile(tablesHandle) == -1
-		|| rbfm->closeFile(columnsHandle) == -1) {
-		return -1;
-	}
-
-	delete buffer;
 	return 0;
 }
 
@@ -134,7 +88,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	int length = tablesHandle.infile->tellg();
 
 	int numPages = length / PAGE_SIZE;
-	int largestTableId = 0;
+	int largestTableId = 0; // Will be used for both inserting into tables and columns
 
 	// search for the largest table id through all the pages
 	for (int i = 0; i < numPages; i++) {
@@ -184,7 +138,13 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 		return -1;
 	}
 
+	// Loop through attrs and iterative insert each row into the columns table
+	for (int i = 0; i < attrs.size(); i++) {
+		prepareColumnsRecord(largestTableId, attrs[i].name, attrs[i].type, attrs.size(), i, buffer);
+		rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
+	}
 
+	rbfm->closeFile(columnsHandle);
 
 	return 0;
 }
