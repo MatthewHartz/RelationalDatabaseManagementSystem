@@ -236,12 +236,38 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
-	return -1;
+	// Open the file related to tableName
+	FileHandle handle;
+	if (rbfm->openFile(tableName, handle) == -1) {
+		return -1;
+	}
+
+	// Get the descriptor from the tables table
+	vector<Attribute> descriptor;
+	if (getAttributes(tableName, descriptor) == -1) return -1;
+
+	// Insert data
+	if (rbfm->insertRecord(handle, descriptor, data, rid) == -1) return -1;
+
+	return 0;
 }
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
-	return -1;
+	// Open the file related to tableName
+	FileHandle handle;
+	if (rbfm->openFile(tableName, handle) == -1) {
+		return -1;
+	}
+
+	// Get the descriptor from the tables table
+	vector<Attribute> descriptor;
+	if (getAttributes(tableName, descriptor) == -1) return -1;
+
+	// Insert data
+	if (rbfm->deleteRecord(handle, descriptor, rid) == -1) return -1;
+
+	return 0;
 }
 
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
@@ -264,6 +290,7 @@ RC RelationManager::readAttribute(const string &tableName, const RID &rid, const
 	return -1;
 }
 
+// attributeNames are the names of the columns for the select statement
 RC RelationManager::scan(const string &tableName,
 	  const string &conditionAttribute,
 	  const CompOp compOp,                  
@@ -271,6 +298,41 @@ RC RelationManager::scan(const string &tableName,
 	  const vector<string> &attributeNames,
 	  RM_ScanIterator &rm_ScanIterator)
 {
+	// Open the "tables" file
+	FileHandle handle;
+	if (rbfm->openFile(tableName, handle) == -1) {
+		return -1;
+	}
+
+	// get size of table
+	handle.infile->seekg(0, ios::end);
+	int length = handle.infile->tellg();
+
+	// get number of pages
+	int numPages = length / PAGE_SIZE;
+	void* record = malloc(120); // will be used to store each record
+
+	switch (compOp) {
+		case EQ_OP:
+			break;
+		case LT_OP:
+			break;
+		case GT_OP:
+			break;
+		case LE_OP:
+			break;
+		case GE_OP:
+			break;
+		case NE_OP:
+			break;
+		default:
+			break;
+	}
+
+	
+
+
+
 	return -1;
 }
 

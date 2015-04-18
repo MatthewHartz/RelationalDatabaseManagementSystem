@@ -19,12 +19,17 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
 public:
-  RM_ScanIterator() {};
-  ~RM_ScanIterator() {};
+	// Added values for caching iterations
+	RID rid;
+	void* currentPage;
+	int numRecords;
+	int numPages;
+	RM_ScanIterator() {};
+	~RM_ScanIterator() {};
 
-  // "data" follows the same format as RelationManager::insertTuple()
-  RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
-  RC close() { return -1; };
+	// "data" follows the same format as RelationManager::insertTuple()
+	RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
+	RC close() { return -1; };
 };
 
 
@@ -32,64 +37,64 @@ public:
 class RelationManager
 {
 public:
-  static RelationManager* instance();
+	static RelationManager* instance();
 
-  RC createCatalog();
+	RC createCatalog();
 
-  RC deleteCatalog();
+	RC deleteCatalog();
 
-  RC createTable(const string &tableName, const vector<Attribute> &attrs);
+	RC createTable(const string &tableName, const vector<Attribute> &attrs);
 
-  RC deleteTable(const string &tableName);
+	RC deleteTable(const string &tableName);
 
-  RC getAttributes(const string &tableName, vector<Attribute> &attrs);
+	RC getAttributes(const string &tableName, vector<Attribute> &attrs);
 
-  RC insertTuple(const string &tableName, const void *data, RID &rid);
+	RC insertTuple(const string &tableName, const void *data, RID &rid);
 
-  RC deleteTuple(const string &tableName, const RID &rid);
+	RC deleteTuple(const string &tableName, const RID &rid);
 
-  RC updateTuple(const string &tableName, const void *data, const RID &rid);
+	RC updateTuple(const string &tableName, const void *data, const RID &rid);
 
-  RC readTuple(const string &tableName, const RID &rid, void *data);
+	RC readTuple(const string &tableName, const RID &rid, void *data);
 
-  // mainly for debugging
-  // Print a tuple that is passed to this utility method.
-  RC printTuple(const vector<Attribute> &attrs, const void *data);
+	// mainly for debugging
+	// Print a tuple that is passed to this utility method.
+	RC printTuple(const vector<Attribute> &attrs, const void *data);
 
-  // mainly for debugging
-  RC readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data);
+	// mainly for debugging
+	RC readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data);
 
-  // scan returns an iterator to allow the caller to go through the results one by one.
-  RC scan(const string &tableName,
-      const string &conditionAttribute,
-      const CompOp compOp,                  // comparison type such as "<" and "="
-      const void *value,                    // used in the comparison
-      const vector<string> &attributeNames, // a list of projected attributes
-      RM_ScanIterator &rm_ScanIterator);
+	// scan returns an iterator to allow the caller to go through the results one by one.
+	RC scan(const string &tableName,
+		const string &conditionAttribute,
+		const CompOp compOp,                  // comparison type such as "<" and "="
+		const void *value,                    // used in the comparison
+		const vector<string> &attributeNames, // a list of projected attributes
+		RM_ScanIterator &rm_ScanIterator);
 
-  vector<Attribute> getTablesDesc() { return this->tablesDescriptor; }
-  vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
-  void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
-  void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
+	vector<Attribute> getTablesDesc() { return this->tablesDescriptor; }
+	vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
+	void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
+	void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
 
 // Extra credit work (10 points)
 public:
-  RC dropAttribute(const string &tableName, const string &attributeName);
+	RC dropAttribute(const string &tableName, const string &attributeName);
 
-  RC addAttribute(const string &tableName, const Attribute &attr);
+	RC addAttribute(const string &tableName, const Attribute &attr);
 
 
 protected:
-  RelationManager();
-  ~RelationManager();
+	RelationManager();
+	~RelationManager();
 
 private:
-  static RelationManager *_rm;
-  RecordBasedFileManager *rbfm;
-  vector<Attribute> tablesDescriptor;
-  vector<Attribute> columnsDescriptor;
+	static RelationManager *_rm;
+	RecordBasedFileManager *rbfm;
+	vector<Attribute> tablesDescriptor;
+	vector<Attribute> columnsDescriptor;
 
-  RC RelationManager::getTableIdByName(const string &tableName, int &tableId);
+	RC RelationManager::getTableIdByName(const string &tableName, int &tableId);
 };
 
 #endif
