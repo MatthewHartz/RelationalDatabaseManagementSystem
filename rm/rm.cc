@@ -249,6 +249,8 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 	// Insert data
 	if (rbfm->insertRecord(handle, descriptor, data, rid) == -1) return -1;
 
+	if (rbfm->closeFile(handle) == -1) return -1;
+
 	return 0;
 }
 
@@ -267,6 +269,8 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 	// Insert data
 	if (rbfm->deleteRecord(handle, descriptor, rid) == -1) return -1;
 
+	if (rbfm->closeFile(handle) == -1) return -1;
+
 	return 0;
 }
 
@@ -284,6 +288,8 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 
 	if (rbfm->updateRecord(handle, descriptor, data, rid) == -1) return -1;
 
+	if (rbfm->closeFile(handle) == -1) return -1;
+
 	return 0;
 }
 
@@ -300,6 +306,8 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 	if (getAttributes(tableName, descriptor) == -1) return -1;
 
 	if (rbfm->readRecord(handle, descriptor, rid, data) == -1) return -1;
+
+	if (rbfm->closeFile(handle) == -1) return -1;
 
 	return 0;
 }
