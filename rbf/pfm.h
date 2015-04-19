@@ -19,6 +19,12 @@ using namespace std;
 
 class FileHandle;
 
+// Constants
+const int F_OFFSET = PAGE_SIZE - sizeof(int);
+const int N_OFFSET = PAGE_SIZE - (2 * sizeof(int));
+const int SLOT_SIZE  = 2 * sizeof(int);
+const int META_INFO = 2 * sizeof(int);
+
 
 class PagedFileManager
 {
