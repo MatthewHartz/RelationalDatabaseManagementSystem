@@ -272,17 +272,41 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
-	return -1;
+	// Open the file related to tableName
+	FileHandle handle;
+	if (rbfm->openFile(tableName, handle) == -1) {
+		return -1;
+	}
+
+	// Get the descriptor from the tables table
+	vector<Attribute> descriptor;
+	if (getAttributes(tableName, descriptor) == -1) return -1;
+
+	if (rbfm->updateRecord(handle, descriptor, data, rid) == -1) return -1;
+
+	return 0;
 }
 
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
-	return -1;
+	// Open the file related to tableName
+	FileHandle handle;
+	if (rbfm->openFile(tableName, handle) == -1) {
+		return -1;
+	}
+
+	// Get the descriptor from the tables table
+	vector<Attribute> descriptor;
+	if (getAttributes(tableName, descriptor) == -1) return -1;
+
+	if (rbfm->readRecord(handle, descriptor, rid, data) == -1) return -1;
+
+	return 0;
 }
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 {
-	return -1;
+	return rbfm->printRecord(attrs, data);
 }
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)

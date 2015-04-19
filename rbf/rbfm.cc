@@ -150,6 +150,10 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
 	return -1;
 }
 
+RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid) {
+	return -1;
+}
+
 
 bool isFieldNull(const void *data, int i) {
 	// create an bitmask to test if the field is null
