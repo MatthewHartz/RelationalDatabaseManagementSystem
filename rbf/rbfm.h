@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <sstream>
 #include <iomanip>
+#include <cstring>
 
 #include "../rbf/pfm.h"
 
@@ -48,12 +49,12 @@ void setUpNewPage(const void *newPage, const void *data, int length, FileHandle 
 
 // Comparison Operator (NOT needed for part 1 of the project)
 typedef enum { NO_OP = 0,  // no condition
-		   EQ_OP,      // =
-		   LT_OP,      // <
-		   GT_OP,      // >
-		   LE_OP,      // <=
-		   GE_OP,      // >=
-		   NE_OP,      // !=
+		   EQ_OP = 1,      // =
+		   LT_OP = 2,      // <
+		   GT_OP = 3,      // >
+		   LE_OP = 4,      // <=
+		   GE_OP = 5,      // >=
+		   NE_OP = 6,      // !=
 } CompOp;
 
 
@@ -73,17 +74,41 @@ The scan iterator is NOT required to be implemented for part 1 of the project
 //  }
 //  rbfmScanIterator.close();
 
+// function helpers for scan Iterator
+int getCompOp(CompOp compOp);
+int getAnyTypeOffset(const vector<Attribute> &descriptor, void *data, int cond, AttrType &type);
+bool processIntComp(int condOffset, CompOp compOp, const void *value, const void *page);
+bool processFloatComp(int condOffset, CompOp compOp, const void *value, const void *page);
+bool processStringComp(int condOffset, CompOp compOp, const void *value, const void *page);
+void extractScannedData(vector<int> &placement, const vector<Attribute> &descriptor, void *page, int offset, void *data);
+
 
 class RBFM_ScanIterator {
 public:
-	RBFM_ScanIterator() {};
+    FileHandle *handle;
+    vector<int> attrPlacement; 
+    const vector<Attribute> *descriptor;
+    const void *value;
+    void *scanPage;
+    CompOp compOp;
+    AttrType condType;
+    int conditionAttribute;
+    int descSize;
+    int currentOffset;
+    int pageNum;
+    int slotNum;
+    
+	RBFM_ScanIterator() { handle = NULL, scanPage = NULL, pageNum = 0, slotNum = 0; };
 	~RBFM_ScanIterator() {};
 
 	// "data" follows the same format as RecordBasedFileManager::insertRecord()
-	RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
+	RC getNextRecord(RID &rid, void *data);
 	RC close() { return -1; };
 };
 
+
+inline bool lessThan(int a, int b) { return a < b; };
+inline bool lessThan(float a, float b) { return a < b; };
 
 class RecordBasedFileManager
 {

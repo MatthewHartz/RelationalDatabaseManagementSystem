@@ -324,3 +324,255 @@ void setUpNewPage(const void *newPage, const void *data, int length, FileHandle 
 	handle.freeSpace.push_back(freeSpace); 
 	memcpy((char *) newPage + F_OFFSET, &freeSpaceOffset, sizeof(int));
 }
+
+
+
+RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, 
+                                        const string &conditionAttribute, const CompOp compOp, 
+                                        const void *value, const vector<string> &attributeNames,
+                                        RBFM_ScanIterator &rbfm_ScanIterator) {
+    // first lets attach the fileHandle to the scanner iterater
+    rbfm_ScanIterator.handle = &fileHandle;
+    rbfm_ScanIterator.compOp = compOp;
+    rbfm_ScanIterator.currentOffset = 0;
+    rbfm_ScanIterator.descriptor = &recordDescriptor;
+    rbfm_ScanIterator.descSize = recordDescriptor.size();
+    rbfm_ScanIterator.value = value;
+
+    // add the the first page to scanPage and set pageNum and slotNUm
+    fileHandle.readPage(rbfm_ScanIterator.pageNum, rbfm_ScanIterator.scanPage); 
+
+    // collect the attribute placements for each record
+    int i;
+    for (auto it = recordDescriptor.begin(); it != recordDescriptor.end(); ++it) {
+        i = it - recordDescriptor.begin();
+        for (auto itN = attributeNames.begin(); itN != attributeNames.end(); ++itN) {
+            if (strcmp(it->name.c_str(), itN->c_str()) == 0) {
+                rbfm_ScanIterator.attrPlacement.push_back(i);
+                if (strcmp(it->name.c_str(), conditionAttribute.c_str()) == 0) {
+                        rbfm_ScanIterator.conditionAttribute = i;
+                }
+            }
+        }
+    } 
+    return 0;
+}
+
+
+// get the next record
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+    // enter in the rid info
+    rid.pageNum = pageNum;
+    rid.slotNum = slotNum;
+
+    // test the condition we need to extract
+    bool isCompTrue;
+    int condOffset = getAnyTypeOffset(*descriptor, scanPage, conditionAttribute, condType) + currentOffset;
+    
+    // here we needt to run the comparison functions with the data
+    if (condType == TypeInt) {
+        isCompTrue = processIntComp(condOffset, compOp, value, scanPage);
+	} else if (condType == TypeReal) {
+        isCompTrue = processFloatComp(condOffset, compOp, value, scanPage); 
+	} else if (condType == TypeVarChar) {
+        isCompTrue = processStringComp(condOffset, compOp, value, scanPage);
+	} else {
+        // this is bad
+        return -1;
+    }
+    if (isCompTrue) {
+        // extract the attributes
+        extractScannedData(attrPlacement, *descriptor, scanPage, currentOffset, data); 
+ 
+    } else {
+        data = NULL;
+    }
+    currentOffset += getRecordSize(scanPage, *descriptor); 
+    return 0;
+}
+
+
+
+int getAnyTypeOffset(const vector<Attribute> &descriptor, void *data, int cond, AttrType &type) {
+    int place = 0;
+    int dataOffset = 0;
+	// Copy null field 
+	int numNullBytes = ceil((double)descriptor.size() / CHAR_BIT);
+	dataOffset += numNullBytes;
+	
+	for (auto it = descriptor.begin(); it == descriptor.end(); ++it) {
+		if (it->type == TypeInt) {
+            if (place == cond) {
+                type = TypeInt;
+                break;
+            }
+			dataOffset += sizeof(int);
+            place++;
+		} else if (it->type == TypeReal) {
+            if (place == cond) {
+                type = TypeReal;
+                break;
+            }
+			dataOffset += sizeof(float);
+            place++;
+		} else if (it->type == TypeVarChar) {
+            if (place == cond) {
+                type = TypeVarChar;
+                break;
+            }
+			int varCharLength;
+			memcpy(&varCharLength, (char *) data + dataOffset, sizeof(int));
+			dataOffset += sizeof(int) + varCharLength;
+            place++;
+		} else {
+			// this should not happen since we assume all data coming it is always correct, for now
+		}
+	} // end of for loop
+    return dataOffset;
+}
+
+
+bool processIntComp(int condOffset, CompOp compOp, const void *value, const void *page) {
+    int intVal;
+    memcpy(&intVal, (char *) value, sizeof(int));
+    
+    int recordVal;
+    memcpy(&recordVal, (char *) page + condOffset, sizeof(int));
+    
+    bool returnVal;
+    switch(compOp) {
+        case 0:     returnVal = true;  
+                    break;
+        case 1:     returnVal = recordVal == intVal;    
+                    break;
+        case 2:     returnVal = recordVal < intVal; 
+                    break;
+        case 3:     returnVal = recordVal > intVal; 
+                    break;
+        case 4:     returnVal = recordVal <= intVal; 
+                    break;
+        case 5:     returnVal = recordVal >= intVal; 
+                    break;
+        case 6:     returnVal = recordVal != intVal; 
+                    break;
+        default:    returnVal = false;
+                    break;
+    }
+    return returnVal;
+}
+
+
+bool processFloatComp(int condOffset, CompOp compOp, const void *value, const void *page) {
+    float floatVal;
+    memcpy(&floatVal, (char *) value, sizeof(float));
+    
+    float recordVal;
+    memcpy(&recordVal, (char *) page + condOffset, sizeof(float));
+    
+    bool returnVal;
+    switch(compOp) {
+        case 0:     returnVal = true;  
+                    break;
+        case 1:     returnVal = recordVal == floatVal;    
+                    break;
+        case 2:     returnVal = recordVal < floatVal; 
+                    break;
+        case 3:     returnVal = recordVal > floatVal; 
+                    break;
+        case 4:     returnVal = recordVal <= floatVal; 
+                    break;
+        case 5:     returnVal = recordVal >= floatVal; 
+                    break;
+        case 6:     returnVal = recordVal != floatVal; 
+                    break;
+        default:    returnVal = false;
+                    break;
+    }
+    return returnVal;
+}
+
+
+bool processStringComp(int condOffset, CompOp compOp, const void *value, const void *page) {
+    int valueLength;
+    memcpy(&valueLength, (char *) value , sizeof(int));
+    
+    // now generate a C string with the same length plus 1
+    char* s = new char[valueLength + 1];
+    memcpy(s, (char *) value + sizeof(int), valueLength);
+    s[valueLength] = '\0';
+    
+    int varCharLength;
+    memcpy(&varCharLength, (char *) page + condOffset, sizeof(int));
+
+    char* sv = new char[varCharLength + 1];
+    memcpy(&sv, (char *) page + sizeof(int) + condOffset, varCharLength);
+    sv[varCharLength] = '\0';
+
+    bool returnVal;
+    switch(compOp) {
+        case 0:     returnVal = true;  
+                    break;
+        case 1:     returnVal = strcmp(s, sv) == 0 ? true : false;    
+                    break;
+        case 2:     returnVal = strcmp(s, sv) < 0 ? true : false; 
+                    break;
+        case 3:     returnVal = strcmp(s, sv) > 0 ? true : false;
+                    break;
+        case 4:     returnVal = strcmp(s, sv) < 0 || strcmp(s, sv) == 0 ? true : false;
+                    break;
+        case 5:     returnVal = strcmp(s, sv) > 0 || strcmp(s, sv) == 0 ? true : false; 
+                    break;
+        case 6:     returnVal = strcmp(s, sv) != 0 ? true : false;
+                    break;
+        default:    returnVal = false;
+                    break;
+    }
+    return returnVal;
+}
+
+
+void extractScannedData(vector<int> &placement
+        , const vector<Attribute> &descriptor
+        , void *page
+        , int offset
+        , void *data) {
+    // go through each placement and extract that data
+    int place = 0;
+    int dataOffset = 0;
+    int counter = 0;
+    int cond = placement[counter];
+
+    for (auto it = descriptor.begin(); it == descriptor.end(); ++it) {
+		if (it->type == TypeInt) {
+            if (place == cond) {
+                memcpy((char *) data + dataOffset, (char *) page + offset, sizeof(int)); 
+                cond = placement[++counter]; 
+            }
+            place++;
+		} else if (it->type == TypeReal) {
+            if (place == cond) {
+                memcpy((char *) data + dataOffset, (char *) page + offset, sizeof(float));
+                cond = placement[++counter];
+            }
+			offset += sizeof(float);
+            dataOffset += sizeof(float);
+            place++;
+		} else if (it->type == TypeVarChar) {
+			int varCharLength;
+            if (place == cond) {
+                memcpy(&varCharLength, (char *) page + offset, sizeof(int));
+                memcpy((char *) data +dataOffset, &varCharLength, sizeof(int));
+                memcpy((char *) data + dataOffset + sizeof(int), (char *) page + offset, varCharLength);
+                cond = placement[++counter];
+            } else {
+			    memcpy(&varCharLength, (char *) data + dataOffset, sizeof(int));
+            }
+			offset += sizeof(int) + varCharLength;
+            dataOffset += sizeof(int) + varCharLength;
+            place++;
+		} else {
+			// this should not happen since we assume all data coming it is always correct, for now
+		}
+	} // end of for loop
+
+}
