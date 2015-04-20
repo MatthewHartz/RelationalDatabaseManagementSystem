@@ -361,6 +361,14 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
 
 // get the next record
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+    // we have to check for empty slots
+    
+
+    // check for end of the page and load new page if needed
+    
+
+    // check for NULL Fields and make sure they are null
+    
     // enter in the rid info
     rid.pageNum = pageNum;
     rid.slotNum = slotNum;
@@ -388,6 +396,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         data = NULL;
     }
     currentOffset += getRecordSize(scanPage, *descriptor); 
+    slotNum++;
     return 0;
 }
 
@@ -541,6 +550,7 @@ void extractScannedData(vector<int> &placement
     int dataOffset = 0;
     int counter = 0;
     int cond = placement[counter];
+
 
     for (auto it = descriptor.begin(); it == descriptor.end(); ++it) {
 		if (it->type == TypeInt) {
