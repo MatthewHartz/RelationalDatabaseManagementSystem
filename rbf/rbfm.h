@@ -18,6 +18,10 @@
 
 using namespace std;
 
+// Constants
+const int RECORD_ATTR_OFFSET_SIZE = 4;
+
+
 // Record ID
 typedef struct
 {
@@ -38,13 +42,7 @@ struct Attribute {
 };
 
 // function declarations
-bool isFieldNull(const void *data,  int i);
-std::string extractType(const void *data, int *offset, AttrType t, AttrLength l);
 int getRecordSize(const void *data, const vector<Attribute> &descriptor);
-void getSlotFile(int slotNum, const void *page, int *offset, int *length);
-int findOpenSlot(FileHandle &handle, int size, RID &rid);
-int getFreeSpaceOffset(const void *data, RID &rid);
-void setUpNewPage(const void *newPage, const void *data, int length, FileHandle &handle);
 
 
 // Comparison Operator (NOT needed for part 1 of the project)
@@ -171,6 +169,15 @@ protected:
 private:
 	static RecordBasedFileManager *_rbf_manager;
 	PagedFileManager *pfm;
+
+    void compactMemory(int offset, int length, const void *data);
+    bool isFieldNull(const void *data, int i);
+    std::string extractType(const void *data, int *offset, AttrType t, AttrLength l);
+    void getSlotFile(int slotNum, const void *page, int *offset, int *length);
+    int findOpenSlot(FileHandle &handle, int size, RID &rid);
+    int getFreeSpaceOffset(const void *data, RID &rid);
+    void setUpNewPage(const void *newPage, const void *data, int length, FileHandle &handle);
+
 };
 
 #endif
