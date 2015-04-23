@@ -147,14 +147,14 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 }
 
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid) {
-    // First generate a page to transfer over from the file, using the pageNum
-    if (rid.pageNum != fileHandle.currentPageNum) {
-        fileHandle.currentPage = malloc(PAGE_SIZE);
-        fileHandle.currentPageNum = rid.pageNum;
-        fileHandle.readPage(rid.pageNum, fileHandle.currentPage);
+    // Determin if we will use the current page or a previous page
+    void *page = NULL;
+    if (fileHandle.currentPageNum == rid.pageNum) {
+        page = fileHandle.currentPage;
+    } else {
+        page = malloc(PAGE_SIZE);
+        fileHandle.readPage(rid.pageNum, page);
     }
-
-    void *page = fileHandle.currentPage;
 
     int offset;
     int length;
@@ -175,15 +175,14 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
 }
 
 RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid) {
-    // First generate a page to transfer over from the file, using the pageNum
-    if (rid.pageNum != fileHandle.currentPageNum) {
-        fileHandle.currentPage = malloc(PAGE_SIZE);
-        fileHandle.currentPageNum = rid.pageNum;
-        fileHandle.readPage(rid.pageNum, fileHandle.currentPage);
+    void *page = NULL;
+    if (fileHandle.currentPageNum == rid.pageNum) {
+        page = fileHandle.currentPage;
+    } else {
+        page = malloc(PAGE_SIZE);
+        fileHandle.readPage(rid.pageNum, page);
     }
-
     RID tempRid;
-    void *page = fileHandle.currentPage;
 
     // Delete the old record
     RecordBasedFileManager::deleteRecord(fileHandle, recordDescriptor, rid);
@@ -198,7 +197,8 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     // If the new RID slot is on a different page, update the slot record with the negated version of these values
     if (rid.pageNum != tempRid.pageNum) {
         // because the first open slot is on a new page, just insert record as usual
-        if (RecordBasedFileManager::insertRecord(fileHandle, recordDescriptor, data, tempRid) == -1) return -1;
+        if (RecordBasedFileManager::insertRecord(fileHandle, recordDescriptor, data, tempRid) == -1)
+            return -1;
 
         //update slot directory with negative values to reflect tombstone
         tempRid.pageNum *= -1;
