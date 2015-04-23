@@ -171,10 +171,57 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     // Shifts the data appropriately
     compactMemory(offset, length, page);
 
-    return -1;
+    return 0;
 }
 
 RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid) {
+    // First generate a page to transfer over from the file, using the pageNum
+    if (rid.pageNum != fileHandle.currentPageNum) {
+        fileHandle.currentPage = malloc(PAGE_SIZE);
+        fileHandle.currentPageNum = rid.pageNum;
+        fileHandle.readPage(rid.pageNum, fileHandle.currentPage);
+    }
+
+    RID tempRid;
+    void *page = fileHandle.currentPage;
+
+    // Delete the old record
+    RecordBasedFileManager::deleteRecord(fileHandle, recordDescriptor, rid);
+
+    // Get size of record
+    int length = getRecordSize(data, recordDescriptor);
+
+    // Get new offset and (potentially) new RID. RID could be new if the updated record is now too large for page.
+    int offSet = findOpenSlot(fileHandle, length, tempRid);
+
+    
+    // If the new RID slot is on a different page, update the slot record with the negated version of these values
+    if (rid.pageNum != tempRid.pageNum) {
+        // because the first open slot is on a new page, just insert record as usual
+        if (RecordBasedFileManager::insertRecord(fileHandle, recordDescriptor, data, tempRid) == -1) return -1;
+
+        //update slot directory with negative values to reflect tombstone
+        tempRid.pageNum *= -1;
+        tempRid.slotNum *= -1;
+
+        int slotEntryOffset = N_OFFSET - (rid.slotNum * SLOT_SIZE);
+        memcpy((char *)page + slotEntryOffset, &tempRid.pageNum, sizeof(int));
+        memcpy((char *)page + slotEntryOffset + sizeof(int), &tempRid.slotNum, sizeof(int));
+
+        return 0;
+    }
+    else {
+        // Write record
+        memcpy((char*)page + offSet, data, length);
+
+        // update slot directory
+        int slotEntryOffset = N_OFFSET - (rid.slotNum * SLOT_SIZE);
+        memcpy((char *)page + slotEntryOffset, &offSet, sizeof(int));
+        memcpy((char *)page + slotEntryOffset + sizeof(int), &length, sizeof(int));
+
+        return 0;
+    }
+
     return -1;
 }
 

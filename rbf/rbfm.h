@@ -96,12 +96,12 @@ public:
     int pageNum;
     int slotNum;
     
-	RBFM_ScanIterator() { handle = NULL, scanPage = NULL, pageNum = 0, slotNum = 0; };
-	~RBFM_ScanIterator() {};
+    RBFM_ScanIterator() { handle = NULL, scanPage = NULL, pageNum = 0, slotNum = 0; };
+    ~RBFM_ScanIterator() {};
 
-	// "data" follows the same format as RecordBasedFileManager::insertRecord()
-	RC getNextRecord(RID &rid, void *data);
-	RC close() { return -1; };
+    // "data" follows the same format as RecordBasedFileManager::insertRecord()
+    RC getNextRecord(RID &rid, void *data);
+    RC close() { return -1; };
 };
 
 
@@ -121,54 +121,54 @@ public:
   
 	RC closeFile(FileHandle &fileHandle);
 
-	//  Format of the data passed into the function is the following:
-	//  [n byte-null-indicators for y fields] [actual value for the first field] [actual value for the second field] ...
-	//  1) For y fields, there is n-byte-null-indicators in the beginning of each record.
-	//     The value n can be calculated as: ceil(y / 8). (e.g., 5 fields => ceil(5 / 8) = 1. 12 fields => ceil(12 / 8) = 2.)
-	//     Each bit represents whether each field contains null value or not.
-	//     If k-th bit from the left is set to 1, k-th field value is null. We do not include anything in the actual data.
-	//     If k-th bit from the left is set to 0, k-th field contains non-null values.
-	//     If thre are more than 8 fields, then you need to find the corresponding byte, then a bit inside that byte.
-	//  2) actual data is a concatenation of values of the attributes
-	//  3) For int and real: use 4 bytes to store the value;
-	//     For varchar: use 4 bytes to store the length of characters, then store the actual characters.
-	//  !!!The same format is used for updateRecord(), the returned data of readRecord(), and readAttribute()
-	// For example, refer to the Q8 of Project 1 wiki page.
-	RC insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid);
+    //  Format of the data passed into the function is the following:
+    //  [n byte-null-indicators for y fields] [actual value for the first field] [actual value for the second field] ...
+    //  1) For y fields, there is n-byte-null-indicators in the beginning of each record.
+    //     The value n can be calculated as: ceil(y / 8). (e.g., 5 fields => ceil(5 / 8) = 1. 12 fields => ceil(12 / 8) = 2.)
+    //     Each bit represents whether each field contains null value or not.
+    //     If k-th bit from the left is set to 1, k-th field value is null. We do not include anything in the actual data.
+    //     If k-th bit from the left is set to 0, k-th field contains non-null values.
+    //     If thre are more than 8 fields, then you need to find the corresponding byte, then a bit inside that byte.
+    //  2) actual data is a concatenation of values of the attributes
+    //  3) For int and real: use 4 bytes to store the value;
+    //     For varchar: use 4 bytes to store the length of characters, then store the actual characters.
+    //  !!!The same format is used for updateRecord(), the returned data of readRecord(), and readAttribute()
+    // For example, refer to the Q8 of Project 1 wiki page.
+    RC insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid);
 
-	RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+    RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
   
-	// This method will be mainly used for debugging/testing
-	RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
+    // This method will be mainly used for debugging/testing
+    RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
 
-	/**************************************************************************************************************************************************************
-	IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) are NOT required to be implemented for part 1 of the project
-	***************************************************************************************************************************************************************/
-	RC deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid);
+    /**************************************************************************************************************************************************************
+    IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) are NOT required to be implemented for part 1 of the project
+    ***************************************************************************************************************************************************************/
+    RC deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid);
 
-	// Assume the rid does not change after update
-	RC updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid);
+    // Assume the rid does not change after update
+    RC updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid);
 
-	RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName, void *data);
+    RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName, void *data);
 
-	// scan returns an iterator to allow the caller to go through the results one by one. 
-	RC scan(FileHandle &fileHandle,
-		const vector<Attribute> &recordDescriptor,
-		const string &conditionAttribute,
-		const CompOp compOp,                  // comparision type such as "<" and "="
-		const void *value,                    // used in the comparison
-		const vector<string> &attributeNames, // a list of projected attributes
-		RBFM_ScanIterator &rbfm_ScanIterator);
+    // scan returns an iterator to allow the caller to go through the results one by one. 
+    RC scan(FileHandle &fileHandle,
+        const vector<Attribute> &recordDescriptor,
+        const string &conditionAttribute,
+        const CompOp compOp,                  // comparision type such as "<" and "="
+        const void *value,                    // used in the comparison
+        const vector<string> &attributeNames, // a list of projected attributes
+        RBFM_ScanIterator &rbfm_ScanIterator);
 
 public:
 
 protected:
-	RecordBasedFileManager();
-	~RecordBasedFileManager();
+    RecordBasedFileManager();
+    ~RecordBasedFileManager();
 
 private:
-	static RecordBasedFileManager *_rbf_manager;
-	PagedFileManager *pfm;
+    static RecordBasedFileManager *_rbf_manager;
+    PagedFileManager *pfm;
 
     void compactMemory(int offset, int length, const void *data);
     bool isFieldNull(const void *data, int i);
