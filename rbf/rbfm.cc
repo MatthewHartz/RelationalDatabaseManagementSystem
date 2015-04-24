@@ -78,8 +78,8 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         transferRecordToPage(page, data, field, newOffset, fieldNumBytes, recordDescriptor.size(), length); 
                 
         // update the number of records and freeSpaceOffset
-        int numRecords = updateNumRecords(page);  
-        int freeSpaceOffset = updateFreeSpaceOffset(page, length);
+        int numRecords = incrementNumRecords(page);  
+        int freeSpaceOffset = incrementFreeSpaceOffset(page, length);
         
         // finally update freespace list
         updateFreeSpace(numRecords, freeSpaceOffset, rid.pageNum, fileHandle);
@@ -147,17 +147,20 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     // Determin if we will use the current page or a previous page
     void *page = determinePageToUse(rid, fileHandle);
     
-    int offset;
-    int length;
+    int offset, length;
     getSlotFile(rid.slotNum, page, &offset, &length);
 
     // Write uninitialized data into the page where the record currently lies
-    void *newData = malloc(length);
-    memcpy(page, (char*)newData, length);
+    //void *newData = malloc(length);
+    //memcpy(page, (char*) newData, length);
+    // memset?
+    memset((char *) page, 0, length);
 
     // Clear out the slot in the meta data
+    int zero = 0;
     int location = PAGE_SIZE - (((rid.slotNum + 1) * SLOT_SIZE) + META_INFO);
-    memcpy(page, (char*)page + location, SLOT_SIZE);
+    memcpy((char *) page + location, &zero, sizeof(int));
+    memcpy((char *) page + location + sizeof(int), &zero, sizeof(int));
     
     // Shifts the data appropriately
     compactMemory(offset, length, page);
@@ -212,7 +215,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
 }
 
 
-int RecordBasedFileManager::updateFreeSpaceOffset(void *page, int length) {
+int RecordBasedFileManager::incrementFreeSpaceOffset(void *page, int length) {
     int freeSpaceOffset;
     memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
     freeSpaceOffset += length;
@@ -220,10 +223,27 @@ int RecordBasedFileManager::updateFreeSpaceOffset(void *page, int length) {
     return freeSpaceOffset;
 }
 
+int RecordBasedFileManager::decrementFreeSpaceOffset(void *page, int length) {
+    int freeSpaceOffset;
+    memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
+    freeSpaceOffset -= length;
+    memcpy((char *) page + F_OFFSET, &freeSpaceOffset, sizeof(int));
+    return freeSpaceOffset;
+}
 
-int RecordBasedFileManager::updateNumRecords(void *page) {
+
+
+int RecordBasedFileManager::incrementNumRecords(void *page) {
     int numRecords = extractNumRecords(page);
     numRecords++;
+    memcpy((char *) page + N_OFFSET, &numRecords, sizeof(int));
+    return numRecords;
+}
+
+
+int RecordBasedFileManager::decrementNumRecords(void *page) {
+    int numRecords = extractNumRecords(page);
+    numRecords--;
     memcpy((char *) page + N_OFFSET, &numRecords, sizeof(int));
     return numRecords;
 }
@@ -734,6 +754,34 @@ void extractScannedData(vector<int> &placement
 
 }
 
-void RecordBasedFileManager::compactMemory(int offset, int length, const void *data) {
 
+int RecordBasedFileManager::extractFreeSpaceOffset(const void *page) {
+     int freeSpaceOffset;
+     memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
+     return freeSpaceOffset;
+}
+
+
+void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *data) {
+    // extract FreeSpaceOffset
+    int freeSpaceOffset = extractFreeSpaceOffset(data);
+    int startOfCompaction = offset + deletedLength;
+    int sizeOfDataBeingCompacted = freeSpaceOffset - startOfCompaction;
+    
+    // move the data to a temp buffer
+    void *dataBeingShifted = malloc(sizeOfDataBeingCompacted);
+    memcpy((char *) dataBeingShifted, (char *) data + startOfCompaction, sizeOfDataBeingCompacted);  
+    
+    // now shift the data over and fill the left over with zeros
+    int newFreeSpaceOffset = decrementFreeSpaceOffset(data, deletedLength);
+    memcpy((char *) data + offset, (char *) dataBeingShifted, sizeOfDataBeingCompacted);
+    memset((char *) data + newFreeSpaceOffset, 0, deletedLength); 
+
+    // update all slot directories that were shifted
+    int numRecords = decrementNumRecords(data);
+   
+    // now we need to update all slots with their new offsets 
+    
+    // free up space
+    free(dataBeingShifted);
 }

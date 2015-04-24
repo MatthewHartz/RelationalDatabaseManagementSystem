@@ -167,7 +167,7 @@ private:
     RID readingRID;
     PagedFileManager *pfm;
 
-    void compactMemory(int offset, int length, const void *data);
+    void compactMemory(int offset, int deletedLength, void *data);
     bool isFieldNull(const void *data, int i);
     std::string extractType(const void *data, int *offset, AttrType t, AttrLength l);
     void getSlotFile(int slotNum, const void *page, int *offset, int *length);
@@ -178,9 +178,12 @@ private:
     int getRecordSize(const void *data, const vector<Attribute> &descriptor, void *field);
     void* determinePageToUse(const RID &rid, FileHandle &handle);
     void transferRecordToPage(void *page, const void *data, void *field, int newOffset, int fieldNumBytes, int recSize, int length);
-    int updateNumRecords(void *page);
-    int updateFreeSpaceOffset(void *page, int length);
+    int incrementNumRecords(void *page);
+    int decrementNumRecords(void *page);
+    int incrementFreeSpaceOffset(void *page, int length);
+    int decrementFreeSpaceOffset(void *page, int length);
     void updateFreeSpace(int numRecords, int freeSpaceOffset, int pageNum, FileHandle &handle);
+    int extractFreeSpaceOffset(const void *page);
     int extractNumRecords(void *page);
     void extractFieldData(int numFields, int length, void *data, void *tempData);
 };
