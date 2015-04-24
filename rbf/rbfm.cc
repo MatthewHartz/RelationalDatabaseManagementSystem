@@ -154,7 +154,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     //void *newData = malloc(length);
     //memcpy(page, (char*) newData, length);
     // memset?
-    memset((char *) page, 0, length);
+    memset((char *) page + offset, 0, length);
 
     // Clear out the slot in the meta data
     int zero = 0;
@@ -779,8 +779,10 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
 
     // update all slot directories that were shifted
     int numRecords = decrementNumRecords(data);
+
+    // TODO: also need to update freeSpace vector
    
-    // now we need to update all slots with their new offsets 
+    // TODO: now we need to update all slots with their new offsets 
     
     // free up space
     free(dataBeingShifted);
