@@ -41,9 +41,6 @@ struct Attribute {
 	AttrLength length; // attribute length
 };
 
-// function declarations
-int getRecordSize(const void *data, const vector<Attribute> &descriptor);
-
 
 // Comparison Operator (NOT needed for part 1 of the project)
 typedef enum { NO_OP = 0,  // no condition
@@ -105,8 +102,6 @@ public:
 };
 
 
-inline bool lessThan(int a, int b) { return a < b; };
-inline bool lessThan(float a, float b) { return a < b; };
 
 class RecordBasedFileManager
 {
@@ -168,6 +163,8 @@ protected:
 
 private:
     static RecordBasedFileManager *_rbf_manager;
+    void *readingPage;
+    RID readingRID;
     PagedFileManager *pfm;
 
     void compactMemory(int offset, int length, const void *data);
@@ -175,9 +172,17 @@ private:
     std::string extractType(const void *data, int *offset, AttrType t, AttrLength l);
     void getSlotFile(int slotNum, const void *page, int *offset, int *length);
     int findOpenSlot(FileHandle &handle, int size, RID &rid);
-    int getFreeSpaceOffset(const void *data, RID &rid);
-    void setUpNewPage(const void *newPage, const void *data, int length, FileHandle &handle);
-
+    int getFreeSpaceOffset(const void *data);
+    void setUpNewPage(void *newPage, const void *data, int length, FileHandle &handle, void *field, int fieldNumBytes, int recSize);
+    void updateSlotDirectory(RID &rid, int pageNum, int slotNum);
+    int getRecordSize(const void *data, const vector<Attribute> &descriptor, void *field);
+    void* determinePageToUse(const RID &rid, FileHandle &handle);
+    void transferRecordToPage(void *page, const void *data, void *field, int newOffset, int fieldNumBytes, int recSize, int length);
+    int updateNumRecords(void *page);
+    int updateFreeSpaceOffset(void *page, int length);
+    void updateFreeSpace(int numRecords, int freeSpaceOffset, int pageNum, FileHandle &handle);
+    int extractNumRecords(void *page);
+    void extractFieldData(int numFields, int length, void *data, void *tempData);
 };
 
 #endif
