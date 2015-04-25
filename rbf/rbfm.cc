@@ -161,9 +161,14 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     int location = PAGE_SIZE - (((rid.slotNum + 1) * SLOT_SIZE) + META_INFO);
     memcpy((char *) page + location, &zero, sizeof(int));
     memcpy((char *) page + location + sizeof(int), &zero, sizeof(int));
+
+    // maybe update number of records and freespace offset here?
+
+    // update freeSpace vector
+    fileHandle.freeSpace[rid.pageNum] += length;
     
     // Shifts the data appropriately
-    compactMemory(offset, length, page);
+    compactMemory(offset, length, page, fileHandle.freeSpace[rid.pageNum]);
 
     return 0;
 }
@@ -762,7 +767,7 @@ int RecordBasedFileManager::extractFreeSpaceOffset(const void *page) {
 }
 
 
-void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *data) {
+void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *data, int freeSpace) {
     // extract FreeSpaceOffset
     int freeSpaceOffset = extractFreeSpaceOffset(data);
     int startOfCompaction = offset + deletedLength;
@@ -777,12 +782,19 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     memcpy((char *) data + offset, (char *) dataBeingShifted, sizeOfDataBeingCompacted);
     memset((char *) data + newFreeSpaceOffset, 0, deletedLength); 
 
-    // update all slot directories that were shifted
-    int numRecords = decrementNumRecords(data);
+    // reduce the number of records by 1
+    decrementNumRecords(data);
 
-    // TODO: also need to update freeSpace vector
-   
     // TODO: now we need to update all slots with their new offsets 
+    int recordOffset;
+    int startOfSlotDirectoryOffset = PAGE_SIZE - (newFreeSpaceOffset + freeSpace); 
+    int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
+    while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
+        memcpy(&recordOffset, (char *) data + startOfSlotDirectoryOffset, sizeof(int));
+        recordOffset -= deletedLength; 
+        memcpy((char *) data + startOfSlotDirectoryOffset, &recordOffset, sizeof(int)); 
+        startOfSlotDirectoryOffset += SLOT_SIZE;
+    }
     
     // free up space
     free(dataBeingShifted);
