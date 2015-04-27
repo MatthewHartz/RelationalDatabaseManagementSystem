@@ -24,6 +24,7 @@ const int F_OFFSET = PAGE_SIZE - sizeof(int);
 const int N_OFFSET = PAGE_SIZE - (2 * sizeof(int));
 const int SLOT_SIZE  = 2 * sizeof(int);
 const int META_INFO = 2 * sizeof(int);
+const int NUMF_OFFSET = sizeof(short);
 
 
 class PagedFileManager
