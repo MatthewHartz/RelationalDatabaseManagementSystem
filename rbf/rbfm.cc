@@ -602,23 +602,21 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     }
 
 
-    // get the next record
-    RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
-        bool condNotMet = true;
-        int numRecords = RecordBasedFileManager::extractNumRecords(scanPage); 
-        int rc = RM_EOF;
+// get the next record
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+    bool condNotMet = true;
+    int numRecords = RecordBasedFileManager::extractNumRecords(scanPage); 
+    int rc = RM_EOF;
 
-        // we have to check for empty slots
-        while (condNotMet) {
-            // lets check and see if this page is our header page and if it is we need to exit on the next
-            // iteration
-            
-            if (scanPage == handle->currentPage && isEndOfPage(scanPage, slotNum, pageNum)) {
+    // we have to check for empty slots
+    while (condNotMet) {
+        // if we on on the last page and at the end of the page end this search
+        if (scanPage == handle->currentPage && isEndOfPage(scanPage, slotNum, pageNum)) {
             condNotMet = false;
             rc = RM_EOF;
+            continue;
         }
-
-        
+    
         // check for end of the page and load new page if needed
         if (isEndOfPage(scanPage, slotNum, pageNum)) {
             handle->readPage(++pageNum, scanPage);
@@ -653,15 +651,16 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
             free(nullField);
             continue;
         }
+        
+        // we need to determine the offset of condition attribute and extract where it starts
         int startOfCondOffset, condFieldOffset;
         condFieldOffset = NUMF_OFFSET + numNullBytes + (conditionAttribute * NUMF_OFFSET);
-        
         memcpy(&startOfCondOffset, (char *) record + condFieldOffset, sizeof(short));
             
         // test the condition we need to extract
         bool isCompTrue;
         
-        // here we needt to run the comparison functions with the data
+        // here we need to run the comparison functions with the data
         if (condType == TypeInt) {
             isCompTrue = processIntComp(startOfCondOffset, compOp, value, record);
         } else if (condType == TypeReal) {
@@ -792,12 +791,12 @@ bool RBFM_ScanIterator::processStringComp(int condOffset, CompOp compOp, const v
 
 void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length, int numFields, void *nullField) {
     // go through each placement and extract that data
-    int sizeOfReturnedAttr = attrPlacement.size();
+    int sizeOfReturnAttrs = attrPlacement.size();
     AttrType currentType;
     int attrSpot;
 
     // lets create our nullFields 
-    int newNumBytes = ceil((double) sizeOfReturnedAttr / CHAR_BIT);
+    int newNumBytes = ceil((double) sizeOfReturnAttrs / CHAR_BIT);
     char *newNullField = new char[newNumBytes];
     memset(&newNullField, 0, newNumBytes);
 
@@ -809,7 +808,7 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     int numNullBytes = ceil((double) numFields / CHAR_BIT);
     int dataOffset = NUMF_OFFSET + numNullBytes + (numFields * NUMF_OFFSET);
 
-    for (int i = 0; i < sizeOfReturnedAttr; ++i) {
+    for (int i = 0; i < sizeOfReturnAttrs; ++i) {
         // lets extract the first
         currentType = attrTypes[i];
         attrSpot = attrPlacement[i];
@@ -853,6 +852,8 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     }
     memcpy((char *) data, (char *) newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
+    free(newNullField);
+    free(tempData);
 }
 
 
