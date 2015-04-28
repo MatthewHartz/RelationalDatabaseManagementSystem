@@ -196,8 +196,8 @@ RC RelationManager::deleteTable(const string &tableName)
     void* buffer = malloc(120);
 
     // Get number of records currently in the tables table
-    tablesHandle.infile->seekg(0, ios::end);
-    int length = tablesHandle.infile->tellg();
+    tablesHandle.handle->seekg(0, ios::end);
+    int length = tablesHandle.handle->tellg();
 
     int numPages = length / PAGE_SIZE;
     void* record = malloc(120); // will be used to store each record
@@ -494,8 +494,8 @@ RC RelationManager::getTableIdByName(const string &tableName, int &tableId) {
     if (columnNumber == -1) return -1;
 
     // Get number of records currently in the tables table
-    tablesHandle.infile->seekg(0, ios::end);
-    int length = tablesHandle.infile->tellg();
+    tablesHandle.handle->seekg(0, ios::end);
+    int length = tablesHandle.handle->tellg();
 
     int numPages = length / PAGE_SIZE;
     void* record = malloc(120); // will be used to store each record

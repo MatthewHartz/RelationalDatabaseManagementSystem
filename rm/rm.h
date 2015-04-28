@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdlib>
 
 #include "../rbf/rbfm.h"
 

@@ -57,8 +57,7 @@ public:
     unsigned currentPageNum;
     void *currentPage;
     vector<unsigned int> freeSpace;
-    ifstream *infile;	
-    ofstream *outfile;
+    fstream *handle;
 
     FileHandle();                                                    // Default constructor
     ~FileHandle();                                                   // Destructor
