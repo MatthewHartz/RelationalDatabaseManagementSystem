@@ -383,7 +383,7 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
     
     int i;
     for (auto it = descriptor.begin(); it != descriptor.end(); ++it) {
-        i = (it - descriptor.begin()) + 1;
+        i = (it - descriptor.begin());
         if (isFieldNull(data, i)) {
             // don't add anything to dataOffset
             memcpy((char *) field + (i * sizeof(short)), &dataOffset, sizeof(short));
@@ -655,7 +655,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         void *record = malloc(length);
         memcpy((char *) record, (char *) scanPage + offset, length);
 
-        int numFields = getNumFields(record);
+        short numFields = getNumFields(record);
         int numNullBytes = ceil((double) numFields / CHAR_BIT);
         void *nullField = malloc(numNullBytes);
         memcpy((char *) nullField, (char *) record + NUMF_OFFSET, numNullBytes);
@@ -672,7 +672,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         short startOfCondOffset;
         int condFieldOffset;
         condFieldOffset = NUMF_OFFSET + numNullBytes + (conditionAttribute * NUMF_OFFSET);
-        memcpy(&startOfCondOffset, (char *) record + condFieldOffset, sizeof(short));
+        memcpy(&startOfCondOffset, (char *) record + 3, sizeof(short));
             
         // test the condition we need to extract
         bool isCompTrue;
@@ -700,7 +700,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     return rc;
 }
 
-int RBFM_ScanIterator::getNumFields(void *page) {
+short RBFM_ScanIterator::getNumFields(void *page) {
     short numFields;
     memcpy(&numFields, (char *) page, sizeof(short));
     return numFields; 

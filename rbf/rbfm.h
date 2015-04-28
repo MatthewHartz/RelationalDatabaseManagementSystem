@@ -97,7 +97,7 @@ public:
 
     int getPageNum() { return pageNum; };
     void* getScanPage() { return scanPage; };
-    int getNumFields(void *page);
+    short getNumFields(void *page);
 
 private:
     FileHandle *handle;
