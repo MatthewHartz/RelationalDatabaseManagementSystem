@@ -358,30 +358,38 @@ RC RelationManager::scan(const string &tableName,
     RID rid;
     void* data = malloc(PAGE_SIZE);
 
-    // Open "tables" file and search for tableName
+    // Open "tables" file
     vector<string> names;
-    names.push_back("file-name");
+    names.push_back("table-id");
     if (rbfm->openFile("Tables", handle) == -1) {
         return -1;
     }
 
-    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, &tableName, attributeNames, rbfmsi)
+    // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
+    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, &tableName, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
     }
 
-    while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
-        int blah = 0;
+    int tableId;
+
+    // Get the first record where table-name matches tableName
+    if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+        memcpy(&tableId, (int*)data + 1, sizeof(int));
     }
 
+    // close respective objects
+    rbfm->closeFile(handle);
+    rbfmsi.close();
 
-    // Open the "tables" file
-    if (rbfm->openFile(tableName, handle) == -1) {
+    // Open the "Columns" file
+    if (rbfm->openFile("Columns", handle) == -1) {
         return -1;
     }
     
-    // Scan over tables
+    // Scan over each row of Columns, looking for where table-id == TableID
+
 
 
 
