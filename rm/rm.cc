@@ -80,11 +80,11 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
     // search for max table id
     RM_ScanIterator rmsi;
-    RC rc = RelationManager::scan(tableName, "table-id", NO_OP, NULL, attributes, rmsi);
+    RC rc = RelationManager::scan("Tables", "table-id", NO_OP, NULL, attributes, rmsi);
 
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
-
+            memcpy(&maxTableId, (int*)buffer + 1, sizeof(int));
         }
         rmsi.close();
     }
@@ -172,6 +172,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
         rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
     }
 
+    // CLose the columns file
     rbfm->closeFile(columnsHandle);
 
     delete buffer;
@@ -366,6 +367,7 @@ RC RelationManager::scan(const string &tableName,
 
     if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, &tableName, attributeNames, rbfmsi)
         == -1) {
+        rbfm->closeFile(handle);
         return RM_EOF;
     }
 
@@ -385,6 +387,8 @@ RC RelationManager::scan(const string &tableName,
 
 
     //rbfm->scan(handle, )
+
+    rbfm->closeFile(handle);
 
     return 0;
 }
