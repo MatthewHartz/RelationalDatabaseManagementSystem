@@ -19,17 +19,30 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
 public:
-    // Added values for caching iterations
-    RID rid;
-    void* currentPage;
-    int numRecords;
-    int numPages;
     RM_ScanIterator() {};
     ~RM_ScanIterator() {};
 
     // "data" follows the same format as RelationManager::insertTuple()
     RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
     RC close() { return -1; };
+
+    // Getters and Setters
+    void setHandle(FileHandle &fileHandle) { handle = &fileHandle; };
+    void setCompOp(const CompOp op) { compOp = op; };
+    void setValue(const void *val) { value = (void *)val; };
+    void setDescriptor(const vector<Attribute> desc) { descriptor = desc; };
+    void setConditionAttr(const string attr) { conditionAttr = attr; };
+    void setAttributeNames(const vector<string> names) { attributeNames = names; };
+    void setRBFM(const RBFM_ScanIterator r) { rbfm = r; };
+
+private:
+    FileHandle *handle;
+    vector<Attribute> descriptor;
+    string conditionAttr;
+    CompOp compOp;
+    void* value;
+    vector<string> attributeNames;
+    RBFM_ScanIterator rbfm;
 };
 
 

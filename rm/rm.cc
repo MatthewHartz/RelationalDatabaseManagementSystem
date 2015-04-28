@@ -71,16 +71,35 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     // Create the new table file
     rbfm->createFile(tableName);
 
+    // Initialize template variables
+    int maxTableId = 0;
+    RID rid;
+    void* buffer = malloc(120);
+    vector<string> attributes;
+    attributes.push_back("table-id");
+
+    // search for max table id
+    RM_ScanIterator rmsi;
+    RC rc = RelationManager::scan(tableName, "table-id", NO_OP, NULL, attributes, rmsi);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+
+        }
+        rmsi.close();
+    }
+
     // Open the "tables" file
     FileHandle tablesHandle;
     if (rbfm->openFile("Tables", tablesHandle) == -1) {
         return -1;
     }
 
+    /*
     RID rid;
-    void* buffer = malloc(120);
 
-    // Get number of records currently in the tables table
+
+    // Get number of pages currently in the tables table
     tablesHandle.infile->seekg(0, ios::end);
     int length = tablesHandle.infile->tellg();
 
@@ -132,9 +151,10 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
             slotNumber++;
         }
     }
+    */
 
     // Add table desc to tables
-    prepareTablesRecord(largestTableId + 1, tableName, tableName, buffer);
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, buffer);
     rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
     // Close tables file
@@ -148,13 +168,13 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
     // Loop through attrs and iterative insert each row into the columns table
     for (int i = 0; i < attrs.size(); i++) {
-        prepareColumnsRecord(largestTableId, attrs[i].name, attrs[i].type, attrs.size(), i, buffer);
+        prepareColumnsRecord(maxTableId, attrs[i].name, attrs[i].type, attrs.size(), i, buffer);
         rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
     }
 
     rbfm->closeFile(columnsHandle);
 
-    delete record;
+    delete buffer;
     return 0;
 }
 
@@ -330,42 +350,43 @@ RC RelationManager::scan(const string &tableName,
     const vector<string> &attributeNames,
     RM_ScanIterator &rm_ScanIterator)
 {
-    // Open the "tables" file
+    // I NEED TO SAVE IT A HANDLE, DESC, CondAttr, CompOP, value, AttrNames, rbfm
+    // Initialize RBFM iterator and file Handle
+    RBFM_ScanIterator rbfmsi;
     FileHandle handle;
-    if (rbfm->openFile(tableName, handle) == -1) {
+    RID rid;
+    void* data = malloc(PAGE_SIZE);
+
+    // Open "tables" file and search for tableName
+    vector<string> names;
+    names.push_back("file-name");
+    if (rbfm->openFile("tables", handle) == -1) {
         return -1;
     }
 
-    // get size of table
-    handle.infile->seekg(0, ios::end);
-    int length = handle.infile->tellg();
+    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, &tableName, attributeNames, rbfmsi)
+        == -1) {
+        return RM_EOF;
+    }
 
-    // get number of pages
-    int numPages = length / PAGE_SIZE;
-    void* record = malloc(120); // will be used to store each record
-
-    switch (compOp) {
-    case EQ_OP:
-        break;
-    case LT_OP:
-        break;
-    case GT_OP:
-        break;
-    case LE_OP:
-        break;
-    case GE_OP:
-        break;
-    case NE_OP:
-        break;
-    default:
-        break;
+    while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+        int blah = 0;
     }
 
 
+    // Open the "tables" file
+    if (rbfm->openFile(tableName, handle) == -1) {
+        return -1;
+    }
+    
+    // Scan over tables
 
 
 
-    return -1;
+
+    //rbfm->scan(handle, )
+
+    return 0;
 }
 
 // Extra credit work

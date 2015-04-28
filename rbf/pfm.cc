@@ -155,6 +155,18 @@ FileHandle::~FileHandle()
 
 RC FileHandle::readPage(PageNum pageNum, void *data)
 {
+    /*infile->seekg(0, ios::end);
+    int length = infile->tellg();
+
+    // Added length guard to protect reading from outside of bounds
+    if ((pageNum * PAGE_SIZE) >= length) {
+        return -1;
+    }*/
+
+    if (pageNum >= numPages) {
+        return -1;
+    }
+
     if (infile != NULL && infile->is_open()) {
         infile->seekg(pageNum * PAGE_SIZE, ios::beg);
         infile->read(((char *) data), PAGE_SIZE);

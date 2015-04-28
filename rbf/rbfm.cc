@@ -569,8 +569,10 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
         rbfm_ScanIterator.setValue(value);
 
         // add the the first page to scanPage and set pageNum and slotNUm
-        fileHandle.readPage(rbfm_ScanIterator.getPageNum(), rbfm_ScanIterator.getScanPage()); 
-
+        if (fileHandle.readPage(rbfm_ScanIterator.getPageNum(), rbfm_ScanIterator.getScanPage()) == -1) {
+            return RM_EOF;
+        }
+         
         // collect the attribute placements for each record
         int i;
         for (auto it = recordDescriptor.begin(); it != recordDescriptor.end(); ++it) {
