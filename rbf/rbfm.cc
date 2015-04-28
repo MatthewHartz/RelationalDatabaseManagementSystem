@@ -555,7 +555,13 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
 RBFM_ScanIterator::RBFM_ScanIterator() {
     pageNum = 0;
     slotNum = 0; 
-    scanPage = value = NULL;
+    scanPage = NULL;
+    value = NULL;
+}
+
+RBFM_ScanIterator::~RBFM_ScanIterator() {
+    if (scanPage != NULL) 
+        free(scanPage);
 }
 
 
@@ -569,8 +575,16 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
     rbfm_ScanIterator.setValue(value);
 
     // add the the first page to scanPage and set pageNum and slotNUm
-    if (fileHandle.readPage(rbfm_ScanIterator.getPageNum(), rbfm_ScanIterator.getScanPage()) == -1) {
-        return RM_EOF;
+    if ((int ) fileHandle.currentPageNum == rbfm_ScanIterator.getPageNum()) {
+        rbfm_ScanIterator.setScanPage(fileHandle.currentPage);
+    } else {
+        // need to create a temp page cause scanPage is private
+        void *_tempScan = malloc(PAGE_SIZE);
+        if (fileHandle.readPage(rbfm_ScanIterator.getPageNum(), _tempScan) == -1) {
+            free(_tempScan);
+            return RM_EOF;
+        }
+        rbfm_ScanIterator.setScanPage(_tempScan);
     }
      
     // collect the attribute placements for each record
@@ -578,13 +592,13 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
     for (auto it = recordDescriptor.begin(); it != recordDescriptor.end(); ++it) {
         i = it - recordDescriptor.begin();
         for (auto itN = attributeNames.begin(); itN != attributeNames.end(); ++itN) {
+            if (strcmp(it->name.c_str(), conditionAttribute.c_str()) == 0) {
+                rbfm_ScanIterator.setCondType(it->type);
+                rbfm_ScanIterator.setConditionAttr(i);
+            }
             if (strcmp(it->name.c_str(), itN->c_str()) == 0) {
                 rbfm_ScanIterator.setAttrTypes(it->type);
                 rbfm_ScanIterator.setAttrPlacement(i);
-                if (strcmp(it->name.c_str(), conditionAttribute.c_str()) == 0) {
-                        rbfm_ScanIterator.setCondType(it->type);
-                        rbfm_ScanIterator.setConditionAttr(i);
-                }
             }
         }
     } 
@@ -597,7 +611,7 @@ bool RBFM_ScanIterator::isEndOfPage(void *page, int slotNum, int pageNum) {
     int freeSpace = handle->freeSpace[pageNum];
 
     int startOfSlotDirectoryOffset = freeSpaceOffset + freeSpace;
-    int currentSlotOffset = PAGE_SIZE - ((slotNum + 1) * SLOT_SIZE) + META_INFO;
+    int currentSlotOffset = PAGE_SIZE - (((slotNum + 1) * SLOT_SIZE) + META_INFO);
     if (startOfSlotDirectoryOffset > currentSlotOffset) 
        return true;
    return false;
@@ -631,7 +645,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         
         // check for NULL Fields and make sure they are null
         int offset, length;
-        RecordBasedFileManager::getSlotFile(slotNum, data, &offset, &length);
+        RecordBasedFileManager::getSlotFile(rid.slotNum, scanPage, &offset, &length);
 
         if (length <= 0) {
             // this means the slot is a tombstone or its a pointer to another page
@@ -655,7 +669,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         }
         
         // we need to determine the offset of condition attribute and extract where it starts
-        int startOfCondOffset, condFieldOffset;
+        short startOfCondOffset;
+        int condFieldOffset;
         condFieldOffset = NUMF_OFFSET + numNullBytes + (conditionAttribute * NUMF_OFFSET);
         memcpy(&startOfCondOffset, (char *) record + condFieldOffset, sizeof(short));
             
@@ -693,6 +708,9 @@ int RBFM_ScanIterator::getNumFields(void *page) {
 
 
 bool RBFM_ScanIterator::processIntComp(int condOffset, CompOp compOp, const void *value, const void *record) {
+    if (compOp == NO_OP) {
+        return true;
+    }  
     int intVal;
     memcpy(&intVal, (char *) value, sizeof(int));
     
@@ -723,6 +741,10 @@ bool RBFM_ScanIterator::processIntComp(int condOffset, CompOp compOp, const void
 
 
 bool RBFM_ScanIterator::processFloatComp(int condOffset, CompOp compOp, const void *value, const void *record) {
+    if (compOp == NO_OP) {
+        return true;
+    }
+
     float floatVal;
     memcpy(&floatVal, (char *) value, sizeof(float));
     
@@ -753,8 +775,12 @@ bool RBFM_ScanIterator::processFloatComp(int condOffset, CompOp compOp, const vo
 
 
 bool RBFM_ScanIterator::processStringComp(int condOffset, CompOp compOp, const void *value, const void *record) {
+    if (compOp == NO_OP) {
+        return true;
+    }
+    
     int valueLength;
-    memcpy(&valueLength, (char *) value , sizeof(int));
+    memcpy(&valueLength, (char *) value, sizeof(int));
     
     // now generate a C string with the same length plus 1
     char* s = new char[valueLength + 1];

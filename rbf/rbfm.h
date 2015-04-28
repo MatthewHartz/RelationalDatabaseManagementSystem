@@ -79,7 +79,7 @@ class RBFM_ScanIterator {
 public:
         
     RBFM_ScanIterator();
-    ~RBFM_ScanIterator() {};
+    ~RBFM_ScanIterator();
 
     // "data" follows the same format as RecordBasedFileManager::insertRecord()
     RC getNextRecord(RID &rid, void *data);
@@ -88,11 +88,12 @@ public:
     // Getters and Setters
     void setHandle(FileHandle &fileHandle) { handle = &fileHandle; };
     void setCompOp(const CompOp op) { compOp = op; };
-    void setValue(const void *val) { value = (void *) val; };
+    void setValue(const void *val) { value = val; };
     void setConditionAttr(int i) { conditionAttribute = i; };
     void setCondType(AttrType type) { condType = type; };
     void setAttrPlacement(int i) { attrPlacement.push_back(i); };
     void setAttrTypes(AttrType type) { attrTypes.push_back(type); };
+    void setScanPage(void *p) { scanPage = p; };
 
     int getPageNum() { return pageNum; };
     void* getScanPage() { return scanPage; };
@@ -102,7 +103,7 @@ private:
     FileHandle *handle;
     vector<int> attrPlacement; 
     vector<AttrType> attrTypes;
-    void *value;
+    const void *value;
     void *scanPage;
     CompOp compOp;
     AttrType condType;

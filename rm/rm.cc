@@ -365,13 +365,17 @@ RC RelationManager::scan(const string &tableName,
         return -1;
     }
 
+    int varLength = tableName.length();
+    value = malloc(sizeof(int) + varLength);
+    memcpy((char *) value, &varLength, sizeof(int)); 
+    memcpy((char *) value + sizeof(int), tableName.c_str(), varLength);
+
     // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
-    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, &tableName, names, rbfmsi)
+    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, value, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
     }
-
     int tableId;
 
     // Get the first record where table-name matches tableName

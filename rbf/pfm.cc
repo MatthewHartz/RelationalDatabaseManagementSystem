@@ -18,7 +18,7 @@ PagedFileManager::PagedFileManager()
 
 PagedFileManager::~PagedFileManager()
 {
-    delete _pf_manager;
+    //delete _pf_manager;
 }
 
 
