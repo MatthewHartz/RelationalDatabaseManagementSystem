@@ -361,7 +361,7 @@ RC RelationManager::scan(const string &tableName,
     // Open "tables" file and search for tableName
     vector<string> names;
     names.push_back("file-name");
-    if (rbfm->openFile("tables", handle) == -1) {
+    if (rbfm->openFile("Tables", handle) == -1) {
         return -1;
     }
 
