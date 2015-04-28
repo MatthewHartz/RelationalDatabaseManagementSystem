@@ -362,7 +362,7 @@ std::string RecordBasedFileManager::extractType(const void *data, int *offset, A
 
 
 int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribute> &descriptor, void *field) {
-    int dataOffset = 0;
+    short dataOffset = 0;
     
     // enter the number of fields as the first param in the field data
     short numFields = descriptor.size();
@@ -384,14 +384,15 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
     int i;
     for (auto it = descriptor.begin(); it != descriptor.end(); ++it) {
         i = (it - descriptor.begin());
+        int of = i * sizeof(short);
         if (isFieldNull(data, i)) {
             // don't add anything to dataOffset
             memcpy((char *) field + (i * sizeof(short)), &dataOffset, sizeof(short));
         } else if (it->type == TypeInt) {
-            memcpy((char *) field + (fieldOffset + (i * sizeof(short))), &dataOffset, sizeof(short));
+            memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
             dataOffset += sizeof(int);
         } else if (it->type == TypeReal) {
-            memcpy((char *) field + (fieldOffset + (i * sizeof(short))), &dataOffset, sizeof(short));
+            memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
             dataOffset += sizeof(float);
        } else if (it->type == TypeVarChar) {
             memcpy((char *) field + (fieldOffset + (i * sizeof(short))), &dataOffset, sizeof(short));
@@ -672,7 +673,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         short startOfCondOffset;
         int condFieldOffset;
         condFieldOffset = NUMF_OFFSET + numNullBytes + (conditionAttribute * NUMF_OFFSET);
-        memcpy(&startOfCondOffset, (char *) record + 3, sizeof(short));
+        memcpy(&startOfCondOffset, (char *) record + condFieldOffset, sizeof(short));
             
         // test the condition we need to extract
         bool isCompTrue;
@@ -691,6 +692,9 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         if (isCompTrue) {
             // extract the attributes
             extractScannedData(record, data, length, numRecords, nullField); 
+            int test;
+            memcpy(&test, (char *) data + 1, sizeof(int));
+
             condNotMet = false;
             rc = 0;
         } 
@@ -789,9 +793,10 @@ bool RBFM_ScanIterator::processStringComp(int condOffset, CompOp compOp, const v
     
     int varCharLength;
     memcpy(&varCharLength, (char *) record + condOffset, sizeof(int));
+    condOffset += sizeof(int);
 
     char* sv = new char[varCharLength + 1];
-    memcpy(&sv, (char *) record + sizeof(int) + condOffset, varCharLength);
+    memcpy(sv, (char *) record + condOffset, varCharLength);
     sv[varCharLength] = '\0';
 
     bool returnVal;
@@ -834,12 +839,15 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
 
     // get the old offsets
     int numNullBytes = ceil((double) numFields / CHAR_BIT);
-    int dataOffset = NUMF_OFFSET + numNullBytes + (numFields * NUMF_OFFSET);
+    short fieldOffset = NUMF_OFFSET + numNullBytes + ((numFields - 1) * NUMF_OFFSET);
 
     for (int i = 0; i < sizeOfReturnAttrs; ++i) {
         // lets extract the first
         currentType = attrTypes[i];
         attrSpot = attrPlacement[i];
+        fieldOffset += (attrSpot * NUMF_OFFSET);
+        short dataOffset;
+        memcpy(&dataOffset, (char *) record + fieldOffset, sizeof(short));
         
         // lets extract the data we need to get the next attribute
         if (RecordBasedFileManager::isFieldNull(nullField, attrSpot)) {
@@ -847,10 +855,12 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
             newNullField[0] >>= attrSpot; 
         }
 
+
         // Here we begin putting the field data into a temp holder
         if (currentType == TypeInt) {
             memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(int)); 
-            tempDataOffset += sizeof(int);
+            // testing only
+                        tempDataOffset += sizeof(int);
             dataOffset += sizeof(int);
         } else if (currentType == TypeReal) {
             memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(float)); 
@@ -872,15 +882,18 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     // now we can piece together all the data, this will only work if RM layer
     // initializes returnData with NULL
     /********* NOT SURE IF I NEED TO ALLOCATE HERE *************/
+    /*
     if (data == NULL) {
         data = malloc(newNumBytes + tempDataOffset);
     } else {
-        free(data);
-        data = malloc(newNumBytes + tempDataOffset);
-    }
+        //data = malloc(newNumBytes + tempDataOffset);
+    } */
     memcpy((char *) data, (char *) newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
-    free(newNullField);
+    int test;
+    memcpy(&test, (char *) data + 1, sizeof(int));
+
+    //free(newNullField);
     free(tempData);
 }
 
