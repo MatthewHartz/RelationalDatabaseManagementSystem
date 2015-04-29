@@ -839,13 +839,13 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
 
     // get the old offsets
     int numNullBytes = ceil((double) numFields / CHAR_BIT);
-    short fieldOffset = NUMF_OFFSET + numNullBytes;
+    short startOfFieldOffset = NUMF_OFFSET + numNullBytes;
 
     for (int i = 0; i < sizeOfReturnAttrs; ++i) {
         // lets extract the first
         currentType = attrTypes[i];
         attrSpot = attrPlacement[i];
-        fieldOffset += (attrSpot * NUMF_OFFSET);
+        short fieldOffset = startOfFieldOffset + (attrSpot * NUMF_OFFSET);
         short dataOffset;
         memcpy(&dataOffset, (char *) record + fieldOffset, sizeof(short));
         
@@ -887,7 +887,7 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
         data = malloc(newNumBytes + tempDataOffset);
     } else {
         //data = malloc(newNumBytes + tempDataOffset);
-    }
+    } */
     memcpy((char *) data, (char *) newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
     int test;
