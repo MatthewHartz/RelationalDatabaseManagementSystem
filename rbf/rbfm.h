@@ -55,8 +55,6 @@ typedef enum { NO_OP = 0,  // no condition
 		   NE_OP = 6,      // !=
 } CompOp;
 
-
-
 /****************************************************************************
 The scan iterator is NOT required to be implemented for part 1 of the project 
 *****************************************************************************/
@@ -83,7 +81,7 @@ public:
 
     // "data" follows the same format as RecordBasedFileManager::insertRecord()
     RC getNextRecord(RID &rid, void *data);
-    RC close() { return -1; };
+    RC close();
 
     // Getters and Setters
     void setHandle(FileHandle &fileHandle) { handle = &fileHandle; };

@@ -397,7 +397,7 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
        } else if (it->type == TypeVarChar) {
             memcpy((char *) field + (fieldOffset + (i * sizeof(short))), &dataOffset, sizeof(short));
             int varCharLength;
-            memcpy(&varCharLength, (char *) data + (dataOffset - fieldData), sizeof(int));
+            memcpy(&varCharLength, (char *) data + dataOffset, sizeof(int));
             dataOffset += sizeof(int) + varCharLength;
         } else {
             // this should not happen since we assume all data coming it is always correct, for now
@@ -704,6 +704,17 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     return rc;
 }
 
+RC RBFM_ScanIterator::close() {
+    handle = NULL;
+    attrPlacement.clear();
+    attrTypes.clear();
+
+    pageNum = 0;
+    slotNum = 0;
+    delete value;
+    delete scanPage;
+}
+
 short RBFM_ScanIterator::getNumFields(void *page) {
     short numFields;
     memcpy(&numFields, (char *) page, sizeof(short));
@@ -723,24 +734,23 @@ bool RBFM_ScanIterator::processIntComp(int condOffset, CompOp compOp, const void
     
     bool returnVal;
     switch(compOp) {
-        case 0:     returnVal = true;  
-                    break;
-        case 1:     returnVal = recordVal == intVal;    
-                    break;
-        case 2:     returnVal = recordVal < intVal; 
-                    break;
-        case 3:     returnVal = recordVal > intVal; 
-                    break;
-        case 4:     returnVal = recordVal <= intVal; 
-                    break;
-        case 5:     returnVal = recordVal >= intVal; 
-                    break;
-        case 6:     returnVal = recordVal != intVal; 
-                    break;
-        default:    returnVal = false;
-                    break;
+        case 0:
+            return true;
+        case 1:
+            return recordVal == intVal;
+        case 2:
+            return recordVal < intVal;
+        case 3:
+            return recordVal > intVal;
+        case 4:
+            return recordVal <= intVal;
+        case 5:
+            return recordVal >= intVal;
+        case 6:
+            return recordVal != intVal;
+        default:
+            return false;
     }
-    return returnVal;
 }
 
 

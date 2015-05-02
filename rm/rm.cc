@@ -41,13 +41,10 @@ RC RelationManager::createCatalog()
     // Create record descriptor for tables
     addAttributeToDesc("table-id", TypeInt, (AttrLength)4, tablesDesc);
     addAttributeToDesc("table-name", TypeVarChar, (AttrLength)50, tablesDesc);
-    addAttributeToDesc("file-name", TypeInt, (AttrLength)4, tablesDesc);
+    addAttributeToDesc("file-name", TypeVarChar, (AttrLength)50, tablesDesc);
 
     setTablesDesc(tablesDesc);
     setColumnsDesc(columnsDesc);
-
-    RID rid;
-    void* buffer = malloc(120);
 
     // Creates system tables, if error occurs in either createTable call, returns -1
     if (createTable("Tables", tablesDesc) == -1 || createTable("Columns", columnsDesc) == -1) return -1;
@@ -95,64 +92,6 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
         return -1;
     }
 
-    /*
-    RID rid;
-
-
-    // Get number of pages currently in the tables table
-    tablesHandle.infile->seekg(0, ios::end);
-    int length = tablesHandle.infile->tellg();
-
-    int numPages = length / PAGE_SIZE;
-    int largestTableId = 0; // Will be used for both inserting into tables and columns
-    void* record = malloc(120); // will be used to store each record
-
-    // search for the largest table id through all the pages
-    for (int i = 0; i < numPages; i++) {
-        void* pageData = malloc(PAGE_SIZE);
-        tablesHandle.readPage(i, pageData);
-
-        int numRecordsOnPage;
-        memcpy(&numRecordsOnPage, (char*)pageData + N_OFFSET, sizeof(int));
-
-        // Iterate over all the records on page looking for the largest table id
-        int recordNumber = 0;
-        int slotNumber = 1;
-
-
-        while (recordNumber < numRecordsOnPage) {
-            //int slotLength;
-            int slotOffset;
-            int slotPosition = N_OFFSET - (slotNumber * (sizeof(int)* 2));
-
-            memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
-
-            // record exists in this slot
-            if (slotOffset >= 0) {
-
-                rid.pageNum = i;
-                rid.slotNum = slotNumber - 1;
-
-                // read the first attribute (table-id) and test if that value is larger that the current max
-                rbfm->readRecord(tablesHandle, getTablesDesc(), rid, record);
-                int tableId;
-                memcpy(&tableId, (char*)record + 1, sizeof(int));
-
-                if (tableId > largestTableId) largestTableId = tableId;
-
-                recordNumber++;
-            }
-            // TODO: Add code to handle a table row that is updated onto a new page
-            else {
-
-            }
-
-            // move to next slot
-            slotNumber++;
-        }
-    }
-    */
-
     // Add table desc to tables
     prepareTablesRecord(maxTableId + 1, tableName, tableName, buffer);
     rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
@@ -168,7 +107,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
     // Loop through attrs and iterative insert each row into the columns table
     for (int i = 0; i < attrs.size(); i++) {
-        prepareColumnsRecord(maxTableId, attrs[i].name, attrs[i].type, attrs.size(), i, buffer);
+        prepareColumnsRecord(maxTableId + 1, attrs[i].name, attrs[i].type, attrs[i].length, i + 1, buffer);
         rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
     }
 
@@ -365,6 +304,7 @@ RC RelationManager::scan(const string &tableName,
         return -1;
     }
 
+    // Initialize the condition attribute value to be compared to
     int varLength = tableName.length();
     value = malloc(sizeof(int) + varLength);
     memcpy((char *) value, &varLength, sizeof(int)); 
@@ -374,8 +314,11 @@ RC RelationManager::scan(const string &tableName,
     if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, value, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
+        delete value;
         return RM_EOF;
     }
+
+
     int tableId;
 
     // Get the first record where table-name matches tableName
@@ -392,13 +335,28 @@ RC RelationManager::scan(const string &tableName,
         return -1;
     }
     
+    // Initialize a vector of all the attributes i want to extract
+    names.clear();
+    names.push_back("column-name");
+    names.push_back("column-type");
+    names.push_back("column-length");
+
+    // Initialize the value to table-id
+    varLength = sizeof(tableId);
+    value = malloc(varLength);
+    memcpy((char *) value, &tableId, sizeof(int));
+
     // Scan over each row of Columns, looking for where table-id == TableID
+    if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, value, names, rbfmsi)
+        == -1) {
+        rbfm->closeFile(handle);
+        return RM_EOF;
+    }
 
-
-
-
-
-    //rbfm->scan(handle, )
+    // Get the first record where table-name matches tableName
+    if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+        memcpy(&tableId, (char *) data + 1, sizeof(int));
+    }
 
     rbfm->closeFile(handle);
 
@@ -429,39 +387,85 @@ void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<At
 void prepareTablesRecord(const int id, const string &table, const string &file, void *buffer) {
     int offset = 0;
     int length = 0;
+    int numFields = 3;
 
     char nullSection = 0;
+
+    // Store number of fields (3)
+    memcpy((char *)buffer + offset, &numFields, sizeof(short));
+    offset += sizeof(short);
 
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
 
-    // Copy over data 
+    // Store offsets for each field
+    int idOffset = offset + (sizeof(short) * numFields);
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    idOffset = 13;
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    idOffset = idOffset + table.length() + sizeof(int);
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    // store ID
     memcpy((char *)buffer + offset, &id, sizeof(int));
     offset += sizeof(int);
 
+    // store table name
     length = table.length();
     memcpy((char *)buffer + offset, &length, sizeof(int));
     offset += sizeof(int);
-    memcpy((char *)buffer + offset, table.c_str(), table.length());
-    offset += table.length();
+    memcpy((char *)buffer + offset, table.c_str(), length);
+    offset += length;
 
+    // store file name
     length = file.length();
     memcpy((char *)buffer + offset, &length, sizeof(int));
     offset += sizeof(int);
-    memcpy((char *)buffer + offset, file.c_str(), file.length());
-    offset += file.length();
+    memcpy((char *)buffer + offset, file.c_str(), length);
+    offset += length;
 }
 
 void prepareColumnsRecord(const int id, const string &name, const AttrType type, const int length, const int position, void *buffer) {
     unsigned int offset = 0;
     int l = 0;
+    int numFields = 5;
 
     char nullSection = 0;
+
+    // Store number of fields (3)
+    memcpy((char *)buffer + offset, &numFields, sizeof(short));
+    offset += sizeof(short);
 
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
+
+    // Store offsets for each field
+    int idOffset = offset + (sizeof(short) * numFields); // id
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    idOffset = idOffset + sizeof(int); // name
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    idOffset = idOffset + name.length() + sizeof(int); // type
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    idOffset = idOffset + sizeof(int); // length
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
+
+    idOffset = idOffset + sizeof(int); // position
+    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
+    offset += sizeof(short);
 
     // Copy over data 
     memcpy((char *)buffer + offset, &id, sizeof(int));
