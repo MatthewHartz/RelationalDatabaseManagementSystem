@@ -81,7 +81,9 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
-            memcpy(&maxTableId, (int*)buffer + 1, sizeof(int));
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                memcpy(&maxTableId, (int*)buffer + 1, sizeof(int));
+            }
         }
         rmsi.close();
     }
@@ -350,8 +352,9 @@ RC RelationManager::scan(const string &tableName,
         return RM_EOF;
     }
 
-    // Get the first record where table-name matches tableName
-    if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+    // Get each record where table-id matches tableId in the Columns table
+    // We will then create the descriptor based off of these records
+    while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
         //memcpy(&tableId, (char *) data + 1, sizeof(int));
     	//TODO: Collect each column and initialize a descriptor.
     }
