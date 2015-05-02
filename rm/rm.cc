@@ -114,7 +114,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     // CLose the columns file
     rbfm->closeFile(columnsHandle);
 
-    delete buffer;
+    free(buffer);
     return 0;
 }
 
@@ -314,7 +314,6 @@ RC RelationManager::scan(const string &tableName,
     if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, value, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
-        delete value;
         return RM_EOF;
     }
 
