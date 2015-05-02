@@ -18,11 +18,12 @@
 
 using namespace std;
 
-// Stuff
-# define RM_EOF (-1)
-
 // Constants
 const int RECORD_ATTR_OFFSET_SIZE = 4;
+
+// Typedefs for record data sizes
+typedef short f_data;   // field data size
+typedef int s_data;;     // slot data size
 
 
 // Record ID
@@ -95,7 +96,6 @@ public:
 
     int getPageNum() { return pageNum; };
     void* getScanPage() { return scanPage; };
-    short getNumFields(void *page);
 
 private:
     FileHandle *handle;
@@ -175,6 +175,9 @@ public:
     static bool isFieldNull(const void *data, int i);
     static int extractNumRecords(void *page);
     static int extractFreeSpaceOffset(const void *page);
+    static void* extractRecord(int slotNum, const void *page);
+    static f_data getNumberOfFields(const void *record);
+    static int getFieldOffset(int location, int numNullBytes, const void *record);
 
 public:
 

@@ -19,12 +19,17 @@ using namespace std;
 
 class FileHandle;
 
+// Typedefs for record data sizes
+typedef short f_data;   // field data size
+typedef int m_data;     // meta data size, include slots and stuff
+
+
 // Constants
-const int F_OFFSET = PAGE_SIZE - sizeof(int);
-const int N_OFFSET = PAGE_SIZE - (2 * sizeof(int));
-const int SLOT_SIZE  = 2 * sizeof(int);
-const int META_INFO = 2 * sizeof(int);
-const int NUMF_OFFSET = sizeof(short);
+const int F_OFFSET = PAGE_SIZE - sizeof(m_data);
+const int N_OFFSET = PAGE_SIZE - (2 * sizeof(m_data));
+const int SLOT_SIZE  = 2 * sizeof(m_data);
+const int META_INFO = 2 * sizeof(m_data);
+const int FIELD_OFFSET = sizeof(f_data);
 
 
 class PagedFileManager
