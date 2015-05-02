@@ -81,7 +81,9 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
-            memcpy(&maxTableId, (int*)buffer + 1, sizeof(int));
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                memcpy(&maxTableId, (int*)buffer + 1, sizeof(int));
+            }
         }
         rmsi.close();
     }
@@ -121,70 +123,69 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 RC RelationManager::deleteTable(const string &tableName)
 {
     int tableId;
+    string fileName;
+    RID rid;
+    void* buffer = malloc(PAGE_SIZE);
 
     // Get table id
-    if (getTableIdByName(tableName, tableId) == -1) return -1;
+    //if (getTableIdByName(tableName, tableId) == -1) return -1;
 
-    // Remove from tables
-    // Open the "tables" file
-    FileHandle tablesHandle;
-    if (rbfm->openFile("Tables", tablesHandle) == -1) {
+    // Scan through the Tables table and get the id where table-name == tableName
+    // This will be used to delete it from the columns table
+    RM_ScanIterator rmsi;
+    vector<string> attributes;
+    attributes.push_back("table-id");
+    attributes.push_back("file-name");
+
+    int varLength = tableName.length();
+    void *value = malloc(sizeof(int) + varLength);
+    memcpy((char *) value, &varLength, sizeof(int));
+    memcpy((char *) value + sizeof(int), tableName.c_str(), varLength);
+    RC rc = RelationManager::scan("Tables", "table-name", EQ_OP, value, attributes, rmsi);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+        	int offSet = 0;
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                memcpy(&tableId, (int*)buffer + 1, sizeof(int));
+                offSet += sizeof(int);
+            }
+
+            int fileNameLength;
+            //memcpy(&fileNameLength, (char*)buffer)
+        }
+        rmsi.close();
+    }
+
+    // Delete tuple from Tables table
+    if (RelationManager::deleteTuple("Tables", rid) == -1) {
         return -1;
     }
 
-    RID rid;
-    void* buffer = malloc(120);
+    rmsi.close();
 
-    // Get number of records currently in the tables table
-    tablesHandle.infile->seekg(0, ios::end);
-    int length = tablesHandle.infile->tellg();
+    value = malloc(sizeof(int));
+    memcpy((char *) value, &tableId, sizeof(int));
+    attributes.clear();
+    attributes.push_back("table-id");
 
-    int numPages = length / PAGE_SIZE;
-    void* record = malloc(120); // will be used to store each record
+    // Scan through the Columns table and get all rows where table-id == tableId
+    // This will be used to delete each record from Columns as they are found by their RID
+    rc = RelationManager::scan("Columns", "table-id", EQ_OP, value, attributes, rmsi);
 
-    // search for the record with the correct ID then remove it
-    for (int i = 0; i < numPages; i++) {
-        void* pageData = malloc(PAGE_SIZE);
-        tablesHandle.readPage(i, pageData);
-
-        int numRecordsOnPage;
-        memcpy(&numRecordsOnPage, (char*)pageData + N_OFFSET, sizeof(int));
-
-        // Iterate over all the records on page looking for the record that matches the table name
-        int recordNumber = 0;
-        int slotNumber = 1;
-        while (recordNumber < numRecordsOnPage) {
-            //int slotLength;
-            int slotOffset;
-            int slotPosition = N_OFFSET - (slotNumber * (sizeof(int)* 2));
-
-            memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
-
-            // record exists in this slot
-            if (slotOffset >= 0) {
-                rid.pageNum = i;
-                rid.slotNum = slotNumber - 1;
-
-                rbfm->readRecord(tablesHandle, getTablesDesc(), rid, record);
-
-                int id;
-                memcpy(&id, (char*)record + 1, sizeof(int)); // we know that the table-id immediately follows the null indicator
-
-                if (id == tableId) {
-                    rbfm->deleteRecord(tablesHandle, getTablesDesc(), rid);
-                }
-
-                recordNumber++;
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            if (RelationManager::deleteTuple("Columns", rid) == -1) {
+            	return -1;
             }
-
-            // move to next slot
-            slotNumber++;
         }
+        rmsi.close();
     }
 
     // TODO
-    // Use table id from tables to delete from columns
-    // Destroy file
+    // Destroy the file
+    FileHandle fileHandle;
+    //rbfm->openFile(tableName)
 
     return 0;
 }
@@ -226,7 +227,7 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
-    // Insert data
+    // Delete data
     if (rbfm->deleteRecord(handle, descriptor, rid) == -1) return -1;
 
     if (rbfm->closeFile(handle) == -1) return -1;
@@ -341,8 +342,7 @@ RC RelationManager::scan(const string &tableName,
     names.push_back("column-length");
 
     // Initialize the value to table-id
-    varLength = sizeof(tableId);
-    value = malloc(varLength);
+    value = malloc(sizeof(int));
     memcpy((char *) value, &tableId, sizeof(int));
 
     // Scan over each row of Columns, looking for where table-id == TableID
@@ -352,8 +352,9 @@ RC RelationManager::scan(const string &tableName,
         return RM_EOF;
     }
 
-    // Get the first record where table-name matches tableName
-    if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+    // Get each record where table-id matches tableId in the Columns table
+    // We will then create the descriptor based off of these records
+    while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
         //memcpy(&tableId, (char *) data + 1, sizeof(int));
     	//TODO: Collect each column and initialize a descriptor.
     }
@@ -485,104 +486,4 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
     memcpy((char *)buffer + offset, &position, sizeof(int));
     offset += sizeof(int);
-}
-
-RC RelationManager::getTableIdByName(const string &tableName, int &tableId) {
-    // Get table id from tables
-    int tableNameLength = tableName.size();
-
-    // Open the "tables" file
-    FileHandle tablesHandle;
-    if (rbfm->openFile("Tables", tablesHandle) == -1) {
-        return -1;
-    }
-
-    RID rid;
-
-    // Determine which index is table-name in tabledesc
-    vector<Attribute> desc = getTablesDesc();
-    string columnName = "table-name";
-    int columnNumber = -1;
-
-    for (int i = 0; i < desc.size(); i++) {
-        if (columnName.compare(desc[i].name) == 0) {
-            columnNumber = i;
-        }
-    }
-
-    // could not find the table-name in the descriptor
-    if (columnNumber == -1) return -1;
-
-    // Get number of records currently in the tables table
-    tablesHandle.infile->seekg(0, ios::end);
-    int length = tablesHandle.infile->tellg();
-
-    int numPages = length / PAGE_SIZE;
-    void* record = malloc(120); // will be used to store each record
-    int id;
-
-    // search for the record with the same table-name property	
-    for (int i = 0; i < numPages; i++) {
-        void* pageData = malloc(PAGE_SIZE);
-        tablesHandle.readPage(i, pageData);
-
-        int numRecordsOnPage;
-        memcpy(&numRecordsOnPage, (char*)pageData + N_OFFSET, sizeof(int));
-
-        // Iterate over all the records on page looking for the record that matches the table name
-        int recordNumber = 0;
-        int slotNumber = 1;
-        while (recordNumber < numRecordsOnPage) {
-            //int slotLength;
-            int slotOffset;
-            int slotPosition = N_OFFSET - (slotNumber * (sizeof(int)* 2));
-
-            memcpy(&slotOffset, (char*)pageData + slotPosition, sizeof(int));
-
-            // record exists in this slot
-            if (slotOffset >= 0) {
-                rid.pageNum = i;
-                rid.slotNum = slotNumber - 1;
-
-                rbfm->readRecord(tablesHandle, desc, rid, record);
-
-                // generate the offset for the string name
-                int offset = 1; // compensate for the null indicator
-                int thisStringLength = 0;
-
-                for (int j = 0; j <= columnNumber; j++) {
-                    int attrLen = sizeof(int); // Attribute length is defaulted to sizeof int unless TypeVarChar modifies it
-                    char* attrName = new char[desc[j].length];
-                    if (desc[j].type == TypeVarChar) {
-                        memcpy(&attrLen, (char*)record + offset, sizeof(int));
-                        offset += sizeof(int);
-                        memcpy(attrName, (char*)record + offset, attrLen);
-                        attrName[attrLen] = '\0';
-
-                    }
-
-                    // table-id column
-                    if (j == 0) {
-                        memcpy(&id, (char*)record + offset, sizeof(int));
-                    }
-
-                    if (j == columnNumber && attrLen == tableNameLength && strcmp((char*)attrName, tableName.c_str()) == 0) {
-                        tableId = id;
-                        delete record;
-                        return 0;
-                    }
-
-                    offset += attrLen;
-                }
-
-                recordNumber++;
-            }
-
-            // move to next slot
-            slotNumber++;
-        }
-    }
-
-    free(record);
-    return -1;
 }
