@@ -393,15 +393,15 @@ void prepareTablesRecord(const int id, const string &table, const string &file, 
     char nullSection = 0;
 
     // Store number of fields (3)
-    memcpy((char *)buffer + offset, &numFields, sizeof(short));
-    offset += sizeof(short);
+    //memcpy((char *)buffer + offset, &numFields, sizeof(short));
+    //offset += sizeof(short);
 
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
 
     // Store offsets for each field
-    int idOffset = offset + (sizeof(short) * numFields);
+    /*int idOffset = offset + (sizeof(short) * numFields);
     memcpy((char *)buffer + offset, &idOffset, sizeof(short));
     offset += sizeof(short);
 
@@ -411,7 +411,7 @@ void prepareTablesRecord(const int id, const string &table, const string &file, 
 
     idOffset = idOffset + table.length() + sizeof(int);
     memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
+    offset += sizeof(short);*/
 
     // store ID
     memcpy((char *)buffer + offset, &id, sizeof(int));
@@ -440,15 +440,15 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
     char nullSection = 0;
 
     // Store number of fields (3)
-    memcpy((char *)buffer + offset, &numFields, sizeof(short));
-    offset += sizeof(short);
+    //memcpy((char *)buffer + offset, &numFields, sizeof(short));
+    //offset += sizeof(short);
 
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
 
     // Store offsets for each field
-    int idOffset = offset + (sizeof(short) * numFields); // id
+    /*int idOffset = offset + (sizeof(short) * numFields); // id
     memcpy((char *)buffer + offset, &idOffset, sizeof(short));
     offset += sizeof(short);
 
@@ -466,7 +466,7 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
     idOffset = idOffset + sizeof(int); // position
     memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
+    offset += sizeof(short);*/
 
     // Copy over data 
     memcpy((char *)buffer + offset, &id, sizeof(int));
