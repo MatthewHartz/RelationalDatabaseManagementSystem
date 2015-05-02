@@ -133,7 +133,7 @@ RC RelationManager::deleteTable(const string &tableName)
     RM_ScanIterator rmsi;
     vector<string> attributes;
     attributes.push_back("table-id");
-    attributes.push_back("file-name")
+    attributes.push_back("file-name");
 
     int varLength = tableName.length();
     void *value = malloc(sizeof(int) + varLength);
@@ -150,7 +150,7 @@ RC RelationManager::deleteTable(const string &tableName)
             }
 
             int fileNameLength;
-            memcpy(&fileNameLength, (char*)buffer)
+            //memcpy(&fileNameLength, (char*)buffer)
         }
         rmsi.close();
     }
@@ -165,12 +165,11 @@ RC RelationManager::deleteTable(const string &tableName)
     value = malloc(sizeof(int));
     memcpy((char *) value, &tableId, sizeof(int));
     attributes.clear();
-    vector<string> attributes;
     attributes.push_back("table-id");
 
     // Scan through the Columns table and get all rows where table-id == tableId
     // This will be used to delete each record from Columns as they are found by their RID
-    RC rc = RelationManager::scan("Columns", "table-id", EQ_OP, value, attributes, rmsi);
+    rc = RelationManager::scan("Columns", "table-id", EQ_OP, value, attributes, rmsi);
 
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
@@ -184,7 +183,7 @@ RC RelationManager::deleteTable(const string &tableName)
     // TODO
     // Destroy the file
     FileHandle fileHandle;
-    rbfm->openFile(tableName)
+    //rbfm->openFile(tableName)
 
     return 0;
 }
