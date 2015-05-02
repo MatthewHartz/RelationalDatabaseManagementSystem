@@ -397,7 +397,7 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
        } else if (it->type == TypeVarChar) {
             memcpy((char *) field + (fieldOffset + (i * sizeof(short))), &dataOffset, sizeof(short));
             int varCharLength;
-            memcpy(&varCharLength, (char *) data + dataOffset, sizeof(int));
+            memcpy(&varCharLength, (char *) data + (dataOffset - fieldData), sizeof(int));
             dataOffset += sizeof(int) + varCharLength;
         } else {
             // this should not happen since we assume all data coming it is always correct, for now

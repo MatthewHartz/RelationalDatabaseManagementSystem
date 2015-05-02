@@ -114,7 +114,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     // CLose the columns file
     rbfm->closeFile(columnsHandle);
 
-    delete buffer;
+    free(buffer);
     return 0;
 }
 
@@ -136,8 +136,8 @@ RC RelationManager::deleteTable(const string &tableName)
     void* buffer = malloc(120);
 
     // Get number of records currently in the tables table
-    tablesHandle.handle->seekg(0, ios::end);
-    int length = tablesHandle.handle->tellg();
+    tablesHandle.infile->seekg(0, ios::end);
+    int length = tablesHandle.infile->tellg();
 
     int numPages = length / PAGE_SIZE;
     void* record = malloc(120); // will be used to store each record
@@ -314,7 +314,6 @@ RC RelationManager::scan(const string &tableName,
     if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, value, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
-        delete value;
         return RM_EOF;
     }
 
@@ -515,8 +514,8 @@ RC RelationManager::getTableIdByName(const string &tableName, int &tableId) {
     if (columnNumber == -1) return -1;
 
     // Get number of records currently in the tables table
-    tablesHandle.handle->seekg(0, ios::end);
-    int length = tablesHandle.handle->tellg();
+    tablesHandle.infile->seekg(0, ios::end);
+    int length = tablesHandle.infile->tellg();
 
     int numPages = length / PAGE_SIZE;
     void* record = malloc(120); // will be used to store each record
@@ -584,6 +583,6 @@ RC RelationManager::getTableIdByName(const string &tableName, int &tableId) {
         }
     }
 
-    delete record;
+    free(record);
     return -1;
 }

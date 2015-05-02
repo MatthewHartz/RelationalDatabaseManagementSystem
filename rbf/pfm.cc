@@ -55,17 +55,18 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
     // check if the file exists
     struct stat buffer;
     if (stat (fileName.c_str(), &buffer) == 0) {
-        if(fileHandle.handle != NULL) {
+        if(fileHandle.infile != NULL) {
             // this means the handle is associated with another file
             return 0;
         }
         // link this new file handle to this opened file
-        fileHandle.handle = new fstream(fileName, ios::in | ios::out | ios::binary | ios::ate);
+        fileHandle.infile = new ifstream(fileName, ios::binary);
+        fileHandle.outfile = new ofstream(fileName, ios::binary | ios::in | ios::out);
 
         // We need to scan the file and grab the free space available in a list
         // and we need to set the currentPage number and currentPage if the file is not empty
-        fileHandle.handle->seekg(0, ios::end);
-        int length = fileHandle.handle->tellg();
+        fileHandle.infile->seekg(0, ios::end);
+        int length = fileHandle.infile->tellg();
         // if the file is not empty then we need to scan it
         if (length != 0) {
             int numPages = fileHandle.numPages = length / PAGE_SIZE;
@@ -104,12 +105,12 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
 
 RC PagedFileManager::closeFile(FileHandle &fileHandle)
 {
-    if (fileHandle.handle == NULL) {
+    if (fileHandle.infile == NULL) {
         // file is not associated with a file (error)
         return -1;
     }
     // check to see if the file is open and close it
-    if (fileHandle.handle->is_open()) {
+    if (fileHandle.infile->is_open()) {
         // the file exists and its open
         if (fileHandle.currentPage != NULL) {
             fileHandle.writePage(fileHandle.currentPageNum, fileHandle.currentPage); 
@@ -120,9 +121,11 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
         fileHandle.freeSpace.clear();
         fileHandle.numPages = 0;
 
-        fileHandle.handle->close();
-        delete fileHandle.handle;
-        fileHandle.handle = NULL;
+        fileHandle.infile->close();
+        delete fileHandle.infile;
+        delete fileHandle.outfile;
+        fileHandle.infile = NULL;
+        fileHandle.outfile = NULL;
         return 0;
     }
     return -1;
@@ -135,7 +138,8 @@ FileHandle::FileHandle()
     writePageCounter = 0;
     appendPageCounter = 0;
     numPages = 0;
-    handle = NULL;
+    infile = NULL;
+    outfile = NULL;
     currentPage = NULL;
     currentPageNum = -1;
 }
@@ -160,9 +164,9 @@ RC FileHandle::readPage(PageNum pageNum, void *data)
         return -1;
     }
 
-    if (handle != NULL && handle->is_open()) {
-        handle->seekg(pageNum * PAGE_SIZE, ios::beg);
-        handle->read(((char *) data), PAGE_SIZE);
+    if (infile != NULL && infile->is_open()) {
+        infile->seekg(pageNum * PAGE_SIZE, ios::beg);
+        infile->read(((char *) data), PAGE_SIZE);
         readPageCounter++;
         return 0;
     } else {
@@ -173,9 +177,9 @@ RC FileHandle::readPage(PageNum pageNum, void *data)
 
 RC FileHandle::writePage(PageNum pageNum, const void *data)
 {
-    if (handle != NULL && handle->is_open()) {
-        handle->seekp(pageNum * PAGE_SIZE, ios::beg);
-        handle->write(((char *) data), PAGE_SIZE);
+    if (outfile != NULL && outfile->is_open()) {
+        outfile->seekp(pageNum * PAGE_SIZE, ios::beg);
+        outfile->write(((char *) data), PAGE_SIZE);
         writePageCounter++;
         return 0;
     } else {
@@ -186,9 +190,9 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 
 RC FileHandle::appendPage(const void *data)
 {
-    if (handle != NULL && handle->is_open()) {
-        handle->seekp(0, ios::end);
-        handle->write(((char *) data), PAGE_SIZE);
+    if (outfile != NULL && outfile->is_open()) {
+        outfile->seekp(0, ios::end);
+        outfile->write(((char *) data), PAGE_SIZE);
         appendPageCounter++;
         numPages++;
         return 0;
