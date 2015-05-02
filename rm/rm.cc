@@ -355,7 +355,8 @@ RC RelationManager::scan(const string &tableName,
 
     // Get the first record where table-name matches tableName
     if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
-        memcpy(&tableId, (char *) data + 1, sizeof(int));
+        //memcpy(&tableId, (char *) data + 1, sizeof(int));
+    	//TODO: Collect each column and initialize a descriptor.
     }
 
     rbfm->closeFile(handle);

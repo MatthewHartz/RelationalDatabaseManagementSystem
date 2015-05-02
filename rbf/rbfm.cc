@@ -284,7 +284,7 @@ void RecordBasedFileManager::transferRecordToPage(void *page
     // finally copy over the rest of the data
     newOffset += metaNumBytes;
     length -= metaNumBytes;
-    memcpy((char *) page + newOffset, (char *) data + numNullBytes, length);
+    memcpy((char *) page + newOffset, (char *) data + metaNumBytes, length);
 }
 
 void* RecordBasedFileManager::determinePageToUse(const RID &rid, FileHandle &handle) {
