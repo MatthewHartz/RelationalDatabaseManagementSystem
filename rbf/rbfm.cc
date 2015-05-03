@@ -737,7 +737,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         memcpy((char *) nullField, (char *) record + FIELD_OFFSET, numNullBytes);
 
         if(RecordBasedFileManager::isFieldNull(nullField, conditionAttribute)) {
-            // this m>eans the field we are trying to COMP is NULL
+            // this means the field we are trying to COMP is NULL
             /******* TODO: what if we have a NO-OP? ********/
             free(record);
             free(nullField);
@@ -909,12 +909,14 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
         attrSpot = attrPlacement[i];
         short fieldOffset = startOfFieldOffset + (attrSpot * FIELD_OFFSET);
         short dataOffset;
+        memset(&dataOffset, 0, sizeof(short));
         memcpy(&dataOffset, (char *) record + fieldOffset, sizeof(short));
         
         // lets extract the data we need to get the next attribute
         if (RecordBasedFileManager::isFieldNull(nullField, attrSpot)) {
             newNullField[0] = (1 << 7);
             newNullField[0] >>= attrSpot; 
+            continue;
         }
 
 
@@ -922,20 +924,17 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
         if (currentType == TypeInt) {
             memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(int)); 
             tempDataOffset += sizeof(int);
-            dataOffset += sizeof(int);
         } else if (currentType == TypeReal) {
             memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(float)); 
             tempDataOffset += sizeof(float);
-            dataOffset += sizeof(float);
         } else if (currentType == TypeVarChar) {
             int varCharLength;
             memcpy(&varCharLength, (char *) record + dataOffset, sizeof(int));
             memcpy((char *) tempData + tempDataOffset, &varCharLength, sizeof(int));
-            memcpy((char *) tempData + tempDataOffset + dataOffset + sizeof(int)
-                                        , (char *) record + dataOffset, varCharLength);
+            memcpy((char *) tempData + tempDataOffset + sizeof(int)
+                                        , (char *) record + dataOffset + sizeof(int), varCharLength);
 
             tempDataOffset += sizeof(int) + varCharLength;
-            dataOffset += sizeof(int) + varCharLength; 
         } else {
             // should not get here
         }
