@@ -271,8 +271,6 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle
     int fieldLength = nextFieldOffset - fieldOffset;
 
     // TODO: do I need to add a nullField to this one attribute?
-    if (data == NULL) 
-        data = malloc(fieldLength);
 
     // extract the field into data and free up memory used
     memcpy((char *) data, (char *) record + fieldOffset, fieldLength);

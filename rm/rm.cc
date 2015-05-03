@@ -489,11 +489,12 @@ RC RelationManager::scan(const string &tableName,
     // Get the descriptor
     vector<Attribute> scanDescriptor;
     RelationManager::getAttributes(tableName, scanDescriptor);
-
+    
     // Open the handle for the file to be scanned over, this will be attached to the rbfmsi
-    if (rbfm->openFile(fileName, handle) == -1) return -1;
+    rm_ScanIterator.handle = new FileHandle;
+    if (rbfm->openFile(fileName, *rm_ScanIterator.handle) == -1) return -1;
 
-    if (rbfm->scan(handle, scanDescriptor, "table-id", EQ_OP, value, attributeNames, rm_ScanIterator.rbfmsi)
+    if (rbfm->scan(*rm_ScanIterator.handle, scanDescriptor, "table-id", EQ_OP, value, attributeNames, rm_ScanIterator.rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
