@@ -352,11 +352,36 @@ RC RelationManager::scan(const string &tableName,
         return RM_EOF;
     }
 
+    vector<Attribute> scanDescriptor;
+    int fieldCounter = 0;
+
     // Get each record where table-id matches tableId in the Columns table
     // We will then create the descriptor based off of these records
     while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
-        //memcpy(&tableId, (char *) data + 1, sizeof(int));
-    	//TODO: Collect each column and initialize a descriptor.
+        //TODO: Collect each column and initialize a descriptor.
+    	Attribute attr;
+        int offset = 1; // compensate for nullIndicator of size = 1. ie: 3 fields is 1 byte
+
+        // If reading the descriptor and any of the fields are null, this is bad.
+        if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1) || rbfm->isFieldNull(data, 2)) {
+            return -1;
+        }
+
+        // Read Column Name
+        int nameLength;
+        memcpy(&nameLength, (int*)data + offset, sizeof(int));
+        offset += sizeof(int);
+        memcpy(&attr.name, (char*)data + offset, nameLength);
+        offset += nameLength;
+
+        // Read column-Type
+        memcpy(&attr.type, (int*)data + offset, sizeof(int));
+        offset += sizeof(int);
+
+        // Read column Length
+        memcpy(&attr.length, (int*)data + offset, sizeof(int));
+
+        scanDescriptor.push_back(attr);
     }
 
     rbfm->closeFile(handle);
