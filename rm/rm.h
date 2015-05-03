@@ -24,7 +24,7 @@ public:
     ~RM_ScanIterator() {};
 
     // "data" follows the same format as RelationManager::insertTuple()
-    RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
+    RC getNextTuple(RID &rid, void *data) { rbfm.getNextRecord(rid, data); };
     RC close() { return -1; };
 
     // Getters and Setters

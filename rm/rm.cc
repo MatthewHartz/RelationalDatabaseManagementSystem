@@ -14,6 +14,7 @@ RelationManager* RelationManager::instance()
 RelationManager::RelationManager()
 {
     rbfm = RecordBasedFileManager::instance();
+    RelationManager::createCatalog();
 }
 
 RelationManager::~RelationManager()
@@ -24,8 +25,6 @@ RC RelationManager::createCatalog()
 {
     const string tablesName = "Tables";
     const string columnsName = "Columns";
-
-    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) return -1;
 
     //Initialize descriptors
     vector<Attribute> columnsDesc;
@@ -45,6 +44,9 @@ RC RelationManager::createCatalog()
 
     setTablesDesc(tablesDesc);
     setColumnsDesc(columnsDesc);
+
+    // If files already exist, return and don't override the current ones
+    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) return -1;
 
     // Creates system tables, if error occurs in either createTable call, returns -1
     if (createTable("Tables", tablesDesc) == -1 || createTable("Columns", columnsDesc) == -1) return -1;
@@ -437,6 +439,7 @@ RC RelationManager::scan(const string &tableName,
 {
     // Initialize RBFM iterator and file Handle
     RBFM_ScanIterator rbfmsi;
+
     FileHandle handle;
     RID rid;
     void* data = malloc(PAGE_SIZE);
