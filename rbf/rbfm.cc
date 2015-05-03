@@ -535,7 +535,7 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
 }
 
 int RecordBasedFileManager::getSlot(const void *page) {
-
+    
 
 }
 
@@ -950,9 +950,6 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     // initializes returnData with NULL
     /********* NOT SURE IF I NEED TO ALLOCATE HERE *************/
     
-    if (data == NULL) 
-        data = malloc(newNumBytes + tempDataOffset);
-     
     memcpy((char *) data, newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
     
