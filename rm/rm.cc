@@ -438,8 +438,6 @@ RC RelationManager::scan(const string &tableName,
     RM_ScanIterator &rm_ScanIterator)
 {
     // Initialize RBFM iterator and file Handle
-    RBFM_ScanIterator rbfmsi;
-
     FileHandle handle;
     RID rid;
     void* data = malloc(PAGE_SIZE);
@@ -458,7 +456,7 @@ RC RelationManager::scan(const string &tableName,
     memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
 
     // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
-    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rbfmsi)
+    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rm_ScanIterator.rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
@@ -467,12 +465,12 @@ RC RelationManager::scan(const string &tableName,
     string fileName;
 
     // Get the first record where table-name matches tableName
-    if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+    if (rm_ScanIterator.rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
         int offset = 1;
 
         // If either of these 2 fields are null, return -1
         if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
-            rbfmsi.close();
+        	rm_ScanIterator.rbfmsi.close();
             return -1;
         }
 
@@ -495,7 +493,7 @@ RC RelationManager::scan(const string &tableName,
     // Open the handle for the file to be scanned over, this will be attached to the rbfmsi
     if (rbfm->openFile(fileName, handle) == -1) return -1;
 
-    if (rbfm->scan(handle, scanDescriptor, "table-id", EQ_OP, value, attributeNames, rbfmsi)
+    if (rbfm->scan(handle, scanDescriptor, "table-id", EQ_OP, value, attributeNames, rm_ScanIterator.rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;

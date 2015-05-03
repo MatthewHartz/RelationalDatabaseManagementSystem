@@ -23,8 +23,10 @@ public:
     RM_ScanIterator() {};
     ~RM_ScanIterator() {};
 
+    RBFM_ScanIterator rbfmsi;
+
     // "data" follows the same format as RelationManager::insertTuple()
-    RC getNextTuple(RID &rid, void *data) { rbfm.getNextRecord(rid, data); };
+    RC getNextTuple(RID &rid, void *data) { return rbfmsi.getNextRecord(rid, data); };
     RC close() { return -1; };
 
     // Getters and Setters
@@ -34,7 +36,7 @@ public:
     void setDescriptor(const vector<Attribute> desc) { descriptor = desc; };
     void setConditionAttr(const string attr) { conditionAttr = attr; };
     void setAttributeNames(const vector<string> names) { attributeNames = names; };
-    void setRBFM(const RBFM_ScanIterator r) { rbfm = r; };
+    //void setRBFM(const RBFM_ScanIterator r) { rbfm = r; };
 
 private:
     FileHandle *handle;
@@ -43,7 +45,7 @@ private:
     CompOp compOp;
     void* value;
     vector<string> attributeNames;
-    RBFM_ScanIterator rbfm;
+    //RBFM_ScanIterator rbfmsi;
 };
 
 
