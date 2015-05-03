@@ -219,10 +219,11 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
     if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rbfmsi)
         == -1) {
-        rbfmsi.close();
+
         free(data);
-        rbfm->closeFile(handle);
         free(compValue);
+        rbfm->closeFile(handle);
+        rbfmsi.close();
         return RM_EOF;
     }
 
@@ -234,9 +235,9 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
         // If either of these 2 fields are null, return -1
         if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
-            rbfmsi.close();
             free(data);
             rbfm->closeFile(handle);
+            rbfmsi.close();
             return -1;
         }
 
@@ -251,9 +252,9 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
     // Open the "Columns" file
     if (rbfm->openFile("Columns", handle) == -1) {
-        rbfmsi.close();
         free(data);
         rbfm->closeFile(handle);
+        rbfmsi.close();
         return -1;
     }
 
@@ -270,10 +271,10 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     // Scan over each row of Columns, looking for where table-id == TableID
     if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, compValue, names, rbfmsi)
         == -1) {
-        rbfmsi.close();
         free(data);
-        rbfm->closeFile(handle);
         free(compValue);
+        rbfm->closeFile(handle);
+        rbfmsi.close();
         return RM_EOF;
     }
 
@@ -285,9 +286,9 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
         // If reading the descriptor and any of the fields are null, this is bad.
         if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1) || rbfm->isFieldNull(data, 2)) {
-            rbfmsi.close();
             free(data);
             rbfm->closeFile(handle);
+            rbfmsi.close();
             return -1;
         }
 
@@ -312,10 +313,10 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         delete name;
     }
 
-    rbfmsi.close();
     free(compValue);
     free(data);
     rbfm->closeFile(handle);
+    rbfmsi.close();
 
     return 0;
 }
