@@ -503,9 +503,11 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
     void *page = handle.currentPage; 
     
     int freeSpace = handle.freeSpace[pageNum];
+    int newSlotNum;
     if (freeSpace > (size + SLOT_SIZE)) {
         // the current page has enough space to fit a new record
-        updateSlotDirectory(rid, pageNum, extractNumRecords(page));
+        newSlotNum = getSlot(handle.currentPage, freeSpace); 
+        updateSlotDirectory(rid, pageNum, newSlotNum);
         return getFreeSpaceOffset(page);
     }
     
@@ -522,7 +524,8 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
             handle.readPage(pageNum, _tempPage);
 
             // update slot directory and get the freeSpaceOffset
-            updateSlotDirectory(rid, pageNum, extractNumRecords(_tempPage));
+            newSlotNum = getSlot(_tempPage, freeSpace); 
+            updateSlotDirectory(rid, pageNum, newSlotNum);
             retVal = getFreeSpaceOffset(_tempPage);
             free(_tempPage);
             break;
@@ -532,7 +535,44 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
     return retVal;
 }
 
-int RecordBasedFileManager::extractNumRecords(void *page) {
+int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
+    int freeSpaceOffset = extractFreeSpaceOffset(page);
+    int startOfSlotDirectoryOffset = freeSpaceOffset + freeSpace;
+
+    // we need to test and see if the number of slots directories is equal to the
+    // start of the Slot direcotry offset. If its not then we have tombstones
+    int numRecords = extractNumRecords(page);
+    int numSlotsOffset = PAGE_SIZE - ((numRecords * SLOT_SIZE) + META_INFO);
+
+    // if start of the Slot Direcotry is smaller than number of Slots offset 
+    // than we know we have tombstones
+    if (startOfSlotDirectoryOffset < numSlotsOffset) {
+        // we need to loop through all the slot directories until an empyt slot is found
+        int slotCounter = 0;
+        int slotsOffset = PAGE_SIZE - (SLOT_SIZE + META_INFO);
+        while (slotsOffset >= startOfSlotDirectoryOffset) {
+            int offset, length;
+            memcpy(&offset, (char *) page + slotsOffset, sizeof(int));
+            memcpy(&length, (char *) page + slotsOffset + sizeof(int), sizeof(int));
+            
+            // check and see if this slot is empty
+            if (length == 0 && offset == 0) 
+                return slotCounter;
+
+            // keep moving along the slot directory
+            slotsOffset -= SLOT_SIZE;
+        }
+
+    } else {
+        // if they are the same then just return the number of records since 
+        // that will be the next slot number
+        return numRecords;
+    }  
+    // if we get here then something went wrong
+    return -1;
+}
+
+int RecordBasedFileManager::extractNumRecords(const void *page) {
     int numRecords;
     memcpy(&numRecords, (char *) page + N_OFFSET, sizeof(int));
     return numRecords; 
@@ -943,9 +983,6 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     // initializes returnData with NULL
     /********* NOT SURE IF I NEED TO ALLOCATE HERE *************/
     
-    if (data == NULL) 
-        data = malloc(newNumBytes + tempDataOffset);
-     
     memcpy((char *) data, newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
     

@@ -314,7 +314,8 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     }
 
     rbfmsi.close();
-    free(data);
+    if (data != NULL) 
+        free(data);
     rbfm->closeFile(handle);
 
     return 0;

@@ -173,7 +173,7 @@ public:
 
     static void getSlotFile(int slotNum, const void *page, int *offset, int *length);
     static bool isFieldNull(const void *data, int i);
-    static int extractNumRecords(void *page);
+    static int extractNumRecords(const void *page);
     static int extractFreeSpaceOffset(const void *page);
     static void* extractRecord(int slotNum, const void *page);
     static f_data getNumberOfFields(const void *record);
@@ -206,6 +206,7 @@ private:
     int decrementFreeSpaceOffset(void *page, int length);
     void updateFreeSpace(int numRecords, int freeSpaceOffset, int pageNum, FileHandle &handle);
     void extractFieldData(int numFields, int length, void *data, void *tempData);
+    int getSlot(const void *page, int freeSpace);
 };
 
 #endif
