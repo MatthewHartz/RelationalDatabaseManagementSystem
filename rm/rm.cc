@@ -203,7 +203,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     // Open "tables" file
     vector<string> names;
     names.push_back("table-id");
-    //names.push_back("file-name");
+
     if (rbfm->openFile("Tables", handle) == -1) {
         return -1;
     }
@@ -217,12 +217,15 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
     if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rbfmsi)
         == -1) {
+        rbfmsi.close();
+        free(data);
         rbfm->closeFile(handle);
+        free(compValue);
         return RM_EOF;
     }
 
+    free(compValue);
     int tableId;
-    string fileName;
 
     // Get the first record where table-name matches tableName
     if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
@@ -230,24 +233,15 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
         // If either of these 2 fields are null, return -1
         if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
-        	rbfmsi.close();
+            rbfmsi.close();
+            free(data);
+            rbfm->closeFile(handle);
             return -1;
         }
 
         // Get the table ID
         memcpy(&tableId, (char *) data + offset, sizeof(int));
         offset += sizeof(int);
-
-        // Get the file Name
-        int nameLength;
-        memcpy(&nameLength, (char*)data + offset, sizeof(int));
-        offset += sizeof(int);
-        char* name = new char[nameLength + 1];
-        memcpy(name, (char*)data + offset, nameLength);
-        name[nameLength] = '\0';
-        fileName = std::string(name);
-
-        delete name;
     }
 
     // close respective objects
@@ -256,6 +250,9 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
     // Open the "Columns" file
     if (rbfm->openFile("Columns", handle) == -1) {
+        rbfmsi.close();
+        free(data);
+        rbfm->closeFile(handle);
         return -1;
     }
 
@@ -272,12 +269,14 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     // Scan over each row of Columns, looking for where table-id == TableID
     if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, compValue, names, rbfmsi)
         == -1) {
+        rbfmsi.close();
+        free(data);
         rbfm->closeFile(handle);
+        free(compValue);
         return RM_EOF;
     }
 
-    vector<Attribute> scanDescriptor;
-    int fieldCounter = 0;
+    free(compValue);
 
     // Get each record where table-id matches tableId in the Columns table
     // We will then create the descriptor based off of these records
@@ -288,6 +287,8 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         // If reading the descriptor and any of the fields are null, this is bad.
         if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1) || rbfm->isFieldNull(data, 2)) {
             rbfmsi.close();
+            free(data);
+            rbfm->closeFile(handle);
             return -1;
         }
 
@@ -308,14 +309,15 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         // Read column Length
         memcpy(&attr.length, (char*)data + offset, sizeof(int));
 
-        scanDescriptor.push_back(attr);
+        attrs.push_back(attr);
         delete name;
     }
 
     rbfmsi.close();
+    free(data);
     rbfm->closeFile(handle);
 
-    attrs = scanDescriptor;
+    return 0;
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
@@ -422,8 +424,7 @@ RC RelationManager::scan(const string &tableName,
 
     // Get FileName of tableName
     vector<string> names;
-    names.push_back("table-id");
-    //names.push_back("file-name");
+    names.push_back("file-name");
     if (rbfm->openFile("Tables", handle) == -1) {
         return -1;
     }
@@ -441,7 +442,6 @@ RC RelationManager::scan(const string &tableName,
         return RM_EOF;
     }
 
-    int tableId;
     string fileName;
 
     // Get the first record where table-name matches tableName
@@ -453,10 +453,6 @@ RC RelationManager::scan(const string &tableName,
             rbfmsi.close();
             return -1;
         }
-
-        // Get the table ID
-        memcpy(&tableId, (char *) data + offset, sizeof(int));
-        offset += sizeof(int);
 
         // Get the file Name
         int nameLength;
