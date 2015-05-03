@@ -704,14 +704,16 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
      
     // collect the attribute placements for each record
     int i;
-    for (auto it = recordDescriptor.begin(); it != recordDescriptor.end(); ++it) {
-        i = it - recordDescriptor.begin();
-        for (auto itN = attributeNames.begin(); itN != attributeNames.end(); ++itN) {
-            if (strcmp(it->name.c_str(), conditionAttribute.c_str()) == 0) {
+    bool foundCondition = false;
+    for (auto itN = attributeNames.begin(); itN != attributeNames.end(); ++itN) {
+        for (auto it = recordDescriptor.begin(); it != recordDescriptor.end(); ++it) {
+            i = it - recordDescriptor.begin();
+            if (!foundCondition && it->name == conditionAttribute) {
                 rbfm_ScanIterator.setCondType(it->type);
                 rbfm_ScanIterator.setConditionAttr(i);
+                foundCondition = true;
             }
-            if (strcmp(it->name.c_str(), itN->c_str()) == 0) {
+            if ((it->name.c_str(), itN->c_str()) == 0) {
                 rbfm_ScanIterator.setAttrTypes(it->type);
                 rbfm_ScanIterator.setAttrPlacement(i);
             }
