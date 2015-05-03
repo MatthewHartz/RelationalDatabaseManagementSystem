@@ -163,12 +163,12 @@ RC RelationManager::deleteTable(const string &tableName)
         }
     }
 
+    rmsi.close();
+
     // Delete tuple from Tables table
     if (RelationManager::deleteTuple("Tables", rid) == -1) {
         return -1;
     }
-
-    rmsi.close();
 
     value = malloc(sizeof(int));
     memcpy((char *) value, &tableId, sizeof(int));
@@ -497,7 +497,7 @@ RC RelationManager::scan(const string &tableName,
     if (rbfm->openFile(fileName, *rm_ScanIterator.handle) == -1) return -1;
 
     // Connecting the Iterator to the correct scan function.
-    if (rbfm->scan(*rm_ScanIterator.handle, scanDescriptor, "table-id", compOp, value, attributeNames, rm_ScanIterator.rbfmsi)
+    if (rbfm->scan(*rm_ScanIterator.handle, scanDescriptor, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
@@ -545,8 +545,6 @@ RC RelationManager::getTableFileName(const string &tableName, string &fileName) 
         return -1;
     }
 
-    free(compValue);
-
     // Get the name of the file from getNextTuple else error
     void* nextTupleData = malloc(PAGE_SIZE);
     if (rmsi.getNextTuple(tempRid, nextTupleData) != RM_EOF) {
@@ -562,8 +560,11 @@ RC RelationManager::getTableFileName(const string &tableName, string &fileName) 
         name[nameLength] = '\0';
         fileName = std::string(name);
     } else {
+        free(compValue);
         return -1;
     }
+
+    free(compValue);
 
     return 0;
 }
