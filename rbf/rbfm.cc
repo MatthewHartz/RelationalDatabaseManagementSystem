@@ -713,7 +713,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
                 rbfm_ScanIterator.setConditionAttr(i);
                 foundCondition = true;
             }
-            if ((it->name.c_str(), itN->c_str()) == 0) {
+            if (strcmp(it->name.c_str(), itN->c_str()) == 0) {
                 rbfm_ScanIterator.setAttrTypes(it->type);
                 rbfm_ScanIterator.setAttrPlacement(i);
             }
