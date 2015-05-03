@@ -127,9 +127,6 @@ RC RelationManager::deleteTable(const string &tableName)
     RID rid;
     void* buffer = malloc(PAGE_SIZE);
 
-    // Get table id
-    //if (getTableIdByName(tableName, tableId) == -1) return -1;
-
     // Scan through the Tables table and get the id where table-name == tableName
     // This will be used to delete it from the columns table
     RM_ScanIterator rmsi;
@@ -144,17 +141,24 @@ RC RelationManager::deleteTable(const string &tableName)
     RC rc = RelationManager::scan("Tables", "table-name", EQ_OP, value, attributes, rmsi);
 
     if (rc != -1) {
-        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
-        	int offSet = 0;
-            if (!rbfm->isFieldNull(buffer, 0)) {
-                memcpy(&tableId, (int*)buffer + 1, sizeof(int));
-                offSet += sizeof(int);
+        if (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            int offset = 1;
+            // Error if either table-id or file-name are null
+            if (rbfm->isFieldNull(buffer, 0) || rbfm->isFieldNull(buffer, 1)) {
+                rmsi.close();
+                return -1;
             }
+            memcpy(&tableId, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
 
-            int fileNameLength;
-            //memcpy(&fileNameLength, (char*)buffer)
+            int nameLength;
+            memcpy(&nameLength, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
+            char* name = new char[nameLength + 1];
+            memcpy(name, (char*)buffer + offset, nameLength);
+            name[nameLength] = '\0';
+            fileName = std::string(name);
         }
-        rmsi.close();
     }
 
     // Delete tuple from Tables table
@@ -176,23 +180,142 @@ RC RelationManager::deleteTable(const string &tableName)
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
             if (RelationManager::deleteTuple("Columns", rid) == -1) {
-            	return -1;
+                return -1;
             }
         }
         rmsi.close();
     }
 
-    // TODO
     // Destroy the file
-    FileHandle fileHandle;
-    //rbfm->openFile(tableName)
+    rbfm->destroyFile(fileName);
 
     return 0;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-    return -1;
+    // Initialize RBFM iterator and file Handle
+    RBFM_ScanIterator rbfmsi;
+    FileHandle handle;
+    RID rid;
+    void* data = malloc(PAGE_SIZE);
+
+    // Open "tables" file
+    vector<string> names;
+    names.push_back("table-id");
+    //names.push_back("file-name");
+    if (rbfm->openFile("Tables", handle) == -1) {
+        return -1;
+    }
+
+    // Initialize the condition attribute value to be compared to
+    int varLength = tableName.length();
+    void* compValue = malloc(sizeof(int) + varLength);
+    memcpy((char *) compValue, &varLength, sizeof(int));
+    memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
+
+    // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
+    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rbfmsi)
+        == -1) {
+        rbfm->closeFile(handle);
+        return RM_EOF;
+    }
+
+    int tableId;
+    string fileName;
+
+    // Get the first record where table-name matches tableName
+    if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+        int offset = 1;
+
+        // If either of these 2 fields are null, return -1
+        if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
+        	rbfmsi.close();
+            return -1;
+        }
+
+        // Get the table ID
+        memcpy(&tableId, (char *) data + offset, sizeof(int));
+        offset += sizeof(int);
+
+        // Get the file Name
+        int nameLength;
+        memcpy(&nameLength, (char*)data + offset, sizeof(int));
+        offset += sizeof(int);
+        char* name = new char[nameLength + 1];
+        memcpy(name, (char*)data + offset, nameLength);
+        name[nameLength] = '\0';
+        fileName = std::string(name);
+
+        delete name;
+    }
+
+    // close respective objects
+    rbfm->closeFile(handle);
+    rbfmsi.close();
+
+    // Open the "Columns" file
+    if (rbfm->openFile("Columns", handle) == -1) {
+        return -1;
+    }
+
+    // Initialize a vector of all the attributes i want to extract
+    names.clear();
+    names.push_back("column-name");
+    names.push_back("column-type");
+    names.push_back("column-length");
+
+    // Initialize the value to table-id
+    compValue = malloc(sizeof(int));
+    memcpy((char *) compValue, &tableId, sizeof(int));
+
+    // Scan over each row of Columns, looking for where table-id == TableID
+    if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, compValue, names, rbfmsi)
+        == -1) {
+        rbfm->closeFile(handle);
+        return RM_EOF;
+    }
+
+    vector<Attribute> scanDescriptor;
+    int fieldCounter = 0;
+
+    // Get each record where table-id matches tableId in the Columns table
+    // We will then create the descriptor based off of these records
+    while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
+    	Attribute attr;
+        int offset = 1; // compensate for nullIndicator of size = 1. ie: 3 fields is 1 byte
+
+        // If reading the descriptor and any of the fields are null, this is bad.
+        if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1) || rbfm->isFieldNull(data, 2)) {
+            rbfmsi.close();
+            return -1;
+        }
+
+        // Read Column Name
+        int nameLength;
+        memcpy(&nameLength, (char*)data + offset, sizeof(int));
+        offset += sizeof(int);
+        char* name = new char[nameLength + 1];
+        memcpy(name, (char*)data + offset, nameLength);
+        offset += nameLength;
+        name[nameLength] = '\0';
+        attr.name = std::string(name);
+
+        // Read column-Type
+        memcpy(&attr.type, (char*)data + offset, sizeof(int));
+        offset += sizeof(int);
+
+        // Read column Length
+        memcpy(&attr.length, (char*)data + offset, sizeof(int));
+
+        scanDescriptor.push_back(attr);
+        delete name;
+    }
+
+    rbfmsi.close();
+    rbfm->closeFile(handle);
+
+    attrs = scanDescriptor;
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
@@ -297,10 +420,10 @@ RC RelationManager::scan(const string &tableName,
     RID rid;
     void* data = malloc(PAGE_SIZE);
 
-    // Open "tables" file
+    // Get FileName of tableName
     vector<string> names;
     names.push_back("table-id");
-    names.push_back("file-name");
+    //names.push_back("file-name");
     if (rbfm->openFile("Tables", handle) == -1) {
         return -1;
     }
@@ -327,6 +450,7 @@ RC RelationManager::scan(const string &tableName,
 
         // If either of these 2 fields are null, return -1
         if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
+            rbfmsi.close();
             return -1;
         }
 
@@ -346,70 +470,9 @@ RC RelationManager::scan(const string &tableName,
         delete name;
     }
 
-    // close respective objects
-    rbfm->closeFile(handle);
-    rbfmsi.close();
-
-    // Open the "Columns" file
-    if (rbfm->openFile("Columns", handle) == -1) {
-        return -1;
-    }
-    
-    // Initialize a vector of all the attributes i want to extract
-    names.clear();
-    names.push_back("column-name");
-    names.push_back("column-type");
-    names.push_back("column-length");
-
-    // Initialize the value to table-id
-    compValue = malloc(sizeof(int));
-    memcpy((char *) compValue, &tableId, sizeof(int));
-
-    // Scan over each row of Columns, looking for where table-id == TableID
-    if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, compValue, names, rbfmsi)
-        == -1) {
-        rbfm->closeFile(handle);
-        return RM_EOF;
-    }
-
+    // Get the descriptor
     vector<Attribute> scanDescriptor;
-    int fieldCounter = 0;
-
-    // Get each record where table-id matches tableId in the Columns table
-    // We will then create the descriptor based off of these records
-    while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
-        //TODO: Collect each column and initialize a descriptor.
-    	Attribute attr;
-        int offset = 1; // compensate for nullIndicator of size = 1. ie: 3 fields is 1 byte
-
-        // If reading the descriptor and any of the fields are null, this is bad.
-        if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1) || rbfm->isFieldNull(data, 2)) {
-            return -1;
-        }
-
-        // Read Column Name
-        int nameLength;
-        memcpy(&nameLength, (char*)data + offset, sizeof(int));
-        offset += sizeof(int);
-        char* name = new char[nameLength + 1];
-        memcpy(name, (char*)data + offset, nameLength);
-        offset += nameLength;
-        name[nameLength] = '\0';
-        attr.name = std::string(name);
-
-        // Read column-Type
-        memcpy(&attr.type, (char*)data + offset, sizeof(int));
-        offset += sizeof(int);
-
-        // Read column Length
-        memcpy(&attr.length, (char*)data + offset, sizeof(int));
-
-        scanDescriptor.push_back(attr);
-        delete name;
-    }
-
-    rbfmsi.close();
-    rbfm->closeFile(handle);
+    RelationManager::getAttributes(tableName, scanDescriptor);
 
     // Open the handle for the file to be scanned over, this will be attached to the rbfmsi
     if (rbfm->openFile(fileName, handle) == -1) return -1;
@@ -451,26 +514,9 @@ void prepareTablesRecord(const int id, const string &table, const string &file, 
 
     char nullSection = 0;
 
-    // Store number of fields (3)
-    //memcpy((char *)buffer + offset, &numFields, sizeof(short));
-    //offset += sizeof(short);
-
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
-
-    // Store offsets for each field
-    /*int idOffset = offset + (sizeof(short) * numFields);
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
-
-    idOffset = 13;
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
-
-    idOffset = idOffset + table.length() + sizeof(int);
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);*/
 
     // store ID
     memcpy((char *)buffer + offset, &id, sizeof(int));
@@ -498,34 +544,9 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
     char nullSection = 0;
 
-    // Store number of fields (3)
-    //memcpy((char *)buffer + offset, &numFields, sizeof(short));
-    //offset += sizeof(short);
-
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
-
-    // Store offsets for each field
-    /*int idOffset = offset + (sizeof(short) * numFields); // id
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
-
-    idOffset = idOffset + sizeof(int); // name
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
-
-    idOffset = idOffset + name.length() + sizeof(int); // type
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
-
-    idOffset = idOffset + sizeof(int); // length
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);
-
-    idOffset = idOffset + sizeof(int); // position
-    memcpy((char *)buffer + offset, &idOffset, sizeof(short));
-    offset += sizeof(short);*/
 
     // Copy over data 
     memcpy((char *)buffer + offset, &id, sizeof(int));
