@@ -677,8 +677,8 @@ RBFM_ScanIterator::RBFM_ScanIterator() {
 }
 
 RBFM_ScanIterator::~RBFM_ScanIterator() {
-    if (scanPage != NULL) 
-        free(scanPage);
+    //if (scanPage != NULL)
+        //free(scanPage);
 }
 
 

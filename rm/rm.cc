@@ -224,7 +224,6 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         return RM_EOF;
     }
 
-    free(compValue);
     int tableId;
 
     // Get the first record where table-name matches tableName
@@ -276,8 +275,6 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         return RM_EOF;
     }
 
-    free(compValue);
-
     // Get each record where table-id matches tableId in the Columns table
     // We will then create the descriptor based off of these records
     while (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
@@ -314,8 +311,8 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     }
 
     rbfmsi.close();
-    if (data != NULL) 
-        free(data);
+    free(compValue);
+    free(data);
     rbfm->closeFile(handle);
 
     return 0;
