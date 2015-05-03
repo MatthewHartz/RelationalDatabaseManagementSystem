@@ -28,7 +28,7 @@ public:
 
     // "data" follows the same format as RelationManager::insertTuple()
     RC getNextTuple(RID &rid, void *data) { return rbfmsi.getNextRecord(rid, data); };
-    RC close() { return -1; };
+    RC close();
 
     // Getters and Setters
     //void setHandle(FileHandle &fileHandle) { handle = fileHandle; };

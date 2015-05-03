@@ -637,3 +637,8 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
     memcpy((char *)buffer + offset, &position, sizeof(int));
     offset += sizeof(int);
 }
+
+RC RM_ScanIterator::close() {
+    free(handle);
+    return 0;
+}
