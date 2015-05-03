@@ -503,8 +503,10 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
     void *page = handle.currentPage; 
     
     int freeSpace = handle.freeSpace[pageNum];
+    int newSlotNum = -1;
     if (freeSpace > (size + SLOT_SIZE)) {
         // the current page has enough space to fit a new record
+        newSlotNum = getSlot(handle.currentPage); 
         updateSlotDirectory(rid, pageNum, extractNumRecords(page));
         return getFreeSpaceOffset(page);
     }
@@ -530,6 +532,11 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
     } 
     // if we get here than no space was available and we need to append
     return retVal;
+}
+
+int RecordBasedFileManager::getSlot(const void *page) {
+
+
 }
 
 int RecordBasedFileManager::extractNumRecords(void *page) {

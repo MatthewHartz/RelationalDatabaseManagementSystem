@@ -206,6 +206,7 @@ private:
     int decrementFreeSpaceOffset(void *page, int length);
     void updateFreeSpace(int numRecords, int freeSpaceOffset, int pageNum, FileHandle &handle);
     void extractFieldData(int numFields, int length, void *data, void *tempData);
+    int getSlot(const void *page);
 };
 
 #endif
