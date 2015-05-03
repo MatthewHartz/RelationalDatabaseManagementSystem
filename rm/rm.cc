@@ -291,7 +291,6 @@ RC RelationManager::scan(const string &tableName,
     const vector<string> &attributeNames,
     RM_ScanIterator &rm_ScanIterator)
 {
-    // I NEED TO SAVE IT A HANDLE, DESC, CondAttr, CompOP, value, AttrNames, rbfm
     // Initialize RBFM iterator and file Handle
     RBFM_ScanIterator rbfmsi;
     FileHandle handle;
@@ -301,29 +300,50 @@ RC RelationManager::scan(const string &tableName,
     // Open "tables" file
     vector<string> names;
     names.push_back("table-id");
+    names.push_back("file-name");
     if (rbfm->openFile("Tables", handle) == -1) {
         return -1;
     }
 
     // Initialize the condition attribute value to be compared to
     int varLength = tableName.length();
-    value = malloc(sizeof(int) + varLength);
-    memcpy((char *) value, &varLength, sizeof(int)); 
-    memcpy((char *) value + sizeof(int), tableName.c_str(), varLength);
+    void* compValue = malloc(sizeof(int) + varLength);
+    memcpy((char *) compValue, &varLength, sizeof(int));
+    memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
 
     // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
-    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, value, names, rbfmsi)
+    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
     }
 
-
     int tableId;
+    string fileName;
 
     // Get the first record where table-name matches tableName
     if (rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
-        memcpy(&tableId, (char *) data + 1, sizeof(int));
+        int offset = 1;
+
+        // If either of these 2 fields are null, return -1
+        if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
+            return -1;
+        }
+
+        // Get the table ID
+        memcpy(&tableId, (char *) data + offset, sizeof(int));
+        offset += sizeof(int);
+
+        // Get the file Name
+        int nameLength;
+        memcpy(&nameLength, (char*)data + offset, sizeof(int));
+        offset += sizeof(int);
+        char* name = new char[nameLength + 1];
+        memcpy(name, (char*)data + offset, nameLength);
+        name[nameLength] = '\0';
+        fileName = std::string(name);
+
+        delete name;
     }
 
     // close respective objects
@@ -342,11 +362,11 @@ RC RelationManager::scan(const string &tableName,
     names.push_back("column-length");
 
     // Initialize the value to table-id
-    value = malloc(sizeof(int));
-    memcpy((char *) value, &tableId, sizeof(int));
+    compValue = malloc(sizeof(int));
+    memcpy((char *) compValue, &tableId, sizeof(int));
 
     // Scan over each row of Columns, looking for where table-id == TableID
-    if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, value, names, rbfmsi)
+    if (rbfm->scan(handle, getColumnsDesc(), "table-id", EQ_OP, compValue, names, rbfmsi)
         == -1) {
         rbfm->closeFile(handle);
         return RM_EOF;
@@ -369,22 +389,36 @@ RC RelationManager::scan(const string &tableName,
 
         // Read Column Name
         int nameLength;
-        memcpy(&nameLength, (int*)data + offset, sizeof(int));
+        memcpy(&nameLength, (char*)data + offset, sizeof(int));
         offset += sizeof(int);
-        memcpy(&attr.name, (char*)data + offset, nameLength);
+        char* name = new char[nameLength + 1];
+        memcpy(name, (char*)data + offset, nameLength);
         offset += nameLength;
+        name[nameLength] = '\0';
+        attr.name = std::string(name);
 
         // Read column-Type
-        memcpy(&attr.type, (int*)data + offset, sizeof(int));
+        memcpy(&attr.type, (char*)data + offset, sizeof(int));
         offset += sizeof(int);
 
         // Read column Length
-        memcpy(&attr.length, (int*)data + offset, sizeof(int));
+        memcpy(&attr.length, (char*)data + offset, sizeof(int));
 
         scanDescriptor.push_back(attr);
+        delete name;
     }
 
+    rbfmsi.close();
     rbfm->closeFile(handle);
+
+    // Open the handle for the file to be scanned over, this will be attached to the rbfmsi
+    if (rbfm->openFile(fileName, handle) == -1) return -1;
+
+    if (rbfm->scan(handle, scanDescriptor, "table-id", EQ_OP, value, attributeNames, rbfmsi)
+        == -1) {
+        rbfm->closeFile(handle);
+        return RM_EOF;
+    }
 
     return 0;
 }
