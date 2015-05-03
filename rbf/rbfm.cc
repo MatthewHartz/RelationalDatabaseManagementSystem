@@ -806,7 +806,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         }
         if (isCompTrue) {
             // extract the attributes
-            extractScannedData(record, data, length, numRecords, nullField); 
+            extractScannedData(record, data, length, numFields, nullField);
             int test;
             memcpy(&test, (char *) data + 1, sizeof(int));
 
