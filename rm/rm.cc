@@ -322,19 +322,25 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
-    // Open the file related to tableName
-    FileHandle handle;
-    if (rbfm->openFile(tableName, handle) == -1) {
+    string fileName;
+    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
         return -1;
     }
 
-    // Get the descriptor from the tables table
+    // Open the file related to tableName
+    FileHandle handle;
+    if (rbfm->openFile(fileName, handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from tableName
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
     // Insert data
     if (rbfm->insertRecord(handle, descriptor, data, rid) == -1) return -1;
 
+    // Close the file
     if (rbfm->closeFile(handle) == -1) return -1;
 
     return 0;
@@ -342,13 +348,18 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
-    // Open the file related to tableName
-    FileHandle handle;
-    if (rbfm->openFile(tableName, handle) == -1) {
+    string fileName;
+    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
         return -1;
     }
 
-    // Get the descriptor from the tables table
+    // Open the file related to tableName
+    FileHandle handle;
+    if (rbfm->openFile(fileName, handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from the tableName
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
@@ -362,13 +373,18 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
-    // Open the file related to tableName
-    FileHandle handle;
-    if (rbfm->openFile(tableName, handle) == -1) {
+    string fileName;
+    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
         return -1;
     }
 
-    // Get the descriptor from the tables table
+    // Open the file related to tableName
+    FileHandle handle;
+    if (rbfm->openFile(fileName, handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from tableName
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
@@ -381,13 +397,18 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
-    // Open the file related to tableName
-    FileHandle handle;
-    if (rbfm->openFile(tableName, handle) == -1) {
+    string fileName;
+    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
         return -1;
     }
 
-    // Get the descriptor from the tables table
+    // Open the file related to tableName
+    FileHandle handle;
+    if (rbfm->openFile(fileName, handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from tableName
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
@@ -492,6 +513,56 @@ RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 RC RelationManager::dropAttribute(const string &tableName, const string &attributeName)
 {
     return -1;
+}
+
+/*
+ * Using tableName, getTableFileName scans through the Tables file and
+ * retrieves the fileName where table-name == tableName
+ *
+ * @tableName The table Name
+ * @fileName The file name that is returned by the function
+ * @return a RC
+ */
+RC RelationManager::getTableFileName(const string &tableName, string &fileName) {
+    RID tempRid;
+    RM_ScanIterator rmsi;
+
+    vector<string> names;
+    names.push_back("file-name");
+
+    // Initialize the condition attribute value to be compared to
+    int varLength = tableName.length();
+    void* compValue = malloc(sizeof(int) + varLength);
+    memcpy((char *) compValue, &varLength, sizeof(int));
+    memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
+
+    // Scan through Tables table and get the file name where table-name == tableName
+    if (RelationManager::scan("Tables", "table-name", EQ_OP, compValue, names, rmsi) == -1) {
+        free(compValue);
+        return -1;
+    }
+
+    free(compValue);
+
+    // Get the name of the file from getNextTuple else error
+    void* nextTupleData = malloc(PAGE_SIZE);
+    if (rmsi.getNextTuple(tempRid, nextTupleData) != RM_EOF) {
+        int offset = 1; // compensate for nullIndicator of size = 1. ie: 3 fields is 1 byte
+
+        // Get fileName from getNextTuple
+        int nameLength;
+        memcpy(&nameLength, (char*)nextTupleData + offset, sizeof(int));
+        offset += sizeof(int);
+        char* name = new char[nameLength + 1];
+        memcpy(name, (char*)nextTupleData + offset, nameLength);
+        offset += nameLength;
+        name[nameLength] = '\0';
+        fileName = std::string(name);
+    } else {
+        return -1;
+    }
+
+    return 0;
 }
 
 // Helper function used to add an attribute to descriptor.
