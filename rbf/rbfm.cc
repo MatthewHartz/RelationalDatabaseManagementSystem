@@ -106,7 +106,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 }
 
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data) {
-    // Determine which page to use using the rid
+        // Determine which page to use using the rid
     if (readingPage == NULL) {
         readingPage = determinePageToUse(rid, fileHandle);
         readingRID.pageNum = rid.pageNum;
@@ -122,6 +122,19 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
 
     int offset, length;
     getSlotFile(rid.slotNum, page, &offset, &length);
+
+    if (offset == 0 && length == 0) {
+        // we have a tombstone here and we need to return an error
+        return -1;
+    }
+
+    // we need to check for a pointer to another record here
+    if (length < 0) {
+        RID newRid;
+        newRid.pageNum *= -1;
+        newRid.slotNum *= -1;
+        return readRecord(fileHandle, recordDescriptor, newRid, data);
+    }
 
     // Now copy the entire contents into data
     void *tempData = malloc(length);
@@ -652,7 +665,7 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
 
     // TODO: now we need to update all slots with their new offsets 
     int recordOffset;
-    int startOfSlotDirectoryOffset = PAGE_SIZE - (newFreeSpaceOffset + freeSpace); 
+    int startOfSlotDirectoryOffset = newFreeSpaceOffset + freeSpace; 
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
     while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
         memcpy(&recordOffset, (char *) data + startOfSlotDirectoryOffset, sizeof(int));
