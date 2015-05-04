@@ -266,9 +266,24 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle
     void *record = extractRecord(rid.slotNum, page);
     int numFields = getNumberOfFields(record);
 
+    // we can now test and see if the field is null
+    int numNullBytes = ceil((double)recordDescriptor.size() / CHAR_BIT);
+    void *nullBytes = malloc(numNullBytes);
+    memcpy((char *) nullBytes, (char *) record + FIELD_OFFSET, numNullBytes);
+
+    // if the field is null just return a nullbyte indicator
+    if (isFieldNull(nullBytes, fieldPlacement)) {
+        void *newNull = malloc(1);
+        memset((char *) newNull, 0, 1);
+        memcpy((char *) data,  (char *) newNull, 1);
+        free(page);
+        free(record);
+        free(nullBytes);
+        free(newNull);
+        return 0;
+    }
 
     // Also not sure if void *data is already allocated or not
-    int numNullBytes = ceil((double)recordDescriptor.size() / CHAR_BIT);
     int fieldOffset = getFieldOffset(fieldPlacement, numNullBytes, record);
     int nextFieldOffset;
 
@@ -285,12 +300,16 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle
     int fieldLength = nextFieldOffset - fieldOffset;
 
     // TODO: do I need to add a nullField to this one attribute?
-
+    void *newNullByte = malloc(1);
+    memset((char *) newNullByte, 0, 1);
+    memcpy((char *) data, (char *) newNullByte, 1);
     // extract the field into data and free up memory used
-    memcpy((char *) data, (char *) record + fieldOffset, fieldLength);
+    memcpy((char *) data + 1, (char *) record + fieldOffset, fieldLength);
 
     free(page);
     free(record);
+    free(nullBytes);
+    free(newNullByte);
     return 0;
 }
 
