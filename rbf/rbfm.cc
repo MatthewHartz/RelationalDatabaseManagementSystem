@@ -207,8 +207,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     int length = getRecordSize(data, recordDescriptor, field);
 
     // Get new offset and (potentially) new RID. RID could be new if the updated record is now too large for page.
-    int offSet = findOpenSlot(fileHandle, length, tempRid);
-
+    int offset = findOpenSlot(fileHandle, length, tempRid);
 
     // If the new RID slot is on a different page, update the slot record with the negated version of these values
     if (rid.pageNum != tempRid.pageNum) {
@@ -592,6 +591,7 @@ int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
 
             // keep moving along the slot directory
             slotsOffset -= SLOT_SIZE;
+            slotCounter++;
         }
 
     } else {
@@ -689,7 +689,7 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
     while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
         memcpy(&recordOffset, (char *) data + startOfSlotDirectoryOffset, sizeof(int));
-        if (recordOffset > 0) {
+        if (recordOffset > newFreeSpaceOffset) {
             recordOffset -= deletedLength;
             memcpy((char *) data + startOfSlotDirectoryOffset, &recordOffset, sizeof(int));
         }
@@ -777,7 +777,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     // we have to check for empty slots
     while (condNotMet) {
         // if we on on the last page and at the end of the page end this search
-        if (scanPage == handle->currentPage && isEndOfPage(scanPage, slotNum, pageNum)) {
+        if ((unsigned) pageNum == handle->currentPageNum && isEndOfPage(scanPage, slotNum, pageNum)) {
             condNotMet = false;
             rc = RBFM_EOF;
             continue;
