@@ -458,14 +458,17 @@ RC RelationManager::scan(const string &tableName,
     RM_ScanIterator &rm_ScanIterator)
 {
     // Initialize RBFM iterator and file Handle
-    FileHandle handle;
+    // save a point to the rbfm
+    rm_ScanIterator.scanRBFM = rbfm;
+
+    //FileHandle handle;
     RID rid;
     void* data = malloc(PAGE_SIZE);
 
     // Get FileName of tableName
     vector<string> names;
     names.push_back("file-name");
-    if (rbfm->openFile("Tables", handle) == -1) {
+    if (rbfm->openFile("Tables", *rm_ScanIterator.handle) == -1) {
         return -1;
     }
 
@@ -476,9 +479,9 @@ RC RelationManager::scan(const string &tableName,
     memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
 
     // Initialize RBFMSI to scan through table's records looking for "Columns" and extract id
-    if (rbfm->scan(handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rm_ScanIterator.rbfmsi)
+    if (rbfm->scan(*rm_ScanIterator.handle, getTablesDesc(), "table-name", EQ_OP, compValue, names, rm_ScanIterator.rbfmsi)
         == -1) {
-        rbfm->closeFile(handle);
+        rbfm->closeFile(*rm_ScanIterator.handle);
         return RM_EOF;
     }
 
@@ -506,6 +509,7 @@ RC RelationManager::scan(const string &tableName,
         delete name;
     }
 
+    rbfm->closeFile(*rm_ScanIterator.handle);
     rm_ScanIterator.rbfmsi.close();
 
     // Get the descriptor
@@ -513,13 +517,13 @@ RC RelationManager::scan(const string &tableName,
     RelationManager::getAttributes(tableName, scanDescriptor);
     
     // Open the handle for the file to be scanned over, this will be attached to the rbfmsi
-    rm_ScanIterator.handle = new FileHandle;
+    //rm_ScanIterator.handle = new FileHandle;
     if (rbfm->openFile(fileName, *rm_ScanIterator.handle) == -1) return -1;
 
     // Connecting the Iterator to the correct scan function.
     if (rbfm->scan(*rm_ScanIterator.handle, scanDescriptor, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfmsi)
         == -1) {
-        rbfm->closeFile(handle);
+        rbfm->closeFile(*rm_ScanIterator.handle);
         return RM_EOF;
     }
 
@@ -583,7 +587,7 @@ RC RelationManager::getTableFileName(const string &tableName, string &fileName) 
         free(compValue);
         return -1;
     }
-
+    rmsi.close();
     free(compValue);
 
     return 0;
@@ -660,6 +664,6 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 }
 
 RC RM_ScanIterator::close() {
-    free(handle);
+    scanRBFM->closeFile(*handle);
     return 0;
 }

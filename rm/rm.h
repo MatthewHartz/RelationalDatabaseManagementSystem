@@ -20,11 +20,12 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
 public:
-    RM_ScanIterator() {};
-    ~RM_ScanIterator() {};
+    RM_ScanIterator() { handle = new FileHandle; };
+    ~RM_ScanIterator() { free(handle); };
 
     RBFM_ScanIterator rbfmsi;
     FileHandle *handle;
+    RecordBasedFileManager *scanRBFM;
 
     // "data" follows the same format as RelationManager::insertTuple()
     RC getNextTuple(RID &rid, void *data) { return rbfmsi.getNextRecord(rid, data); };
