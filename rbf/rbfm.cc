@@ -37,7 +37,7 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
     return pfm->closeFile(fileHandle);
 }
 
-RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {  
+RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {
     // lets determine if we need to append a new page or just write to a page
     short numFields = recordDescriptor.size();
     int numNullBytes = ceil((double) numFields / CHAR_BIT);
@@ -49,9 +49,9 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
     void *metaData = malloc(metaNumBytes);
     int length = getRecordSize(data, recordDescriptor, metaData);
 
-    // findOpenSlot() will search for an open slot in the slot directory 
+    // findOpenSlot() will search for an open slot in the slot directory
     // if it finds one it will update the rid and return the new offset for the record
-    int newOffset = findOpenSlot(fileHandle, length, rid); 
+    int newOffset = findOpenSlot(fileHandle, length, rid);
     if (newOffset == -1) {
         // first thing we need to do is write the current page to file and free up the memory
         // only if there is 1 or more pages in the file Handle
@@ -62,36 +62,36 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
             }
             free(fileHandle.currentPage);
         }
-        
+
         // we need to append a new page
         fileHandle.currentPage = malloc(PAGE_SIZE);
         void *newPage = fileHandle.currentPage;
         memset(newPage, 0, PAGE_SIZE);
-        
+
         // update the RID
         fileHandle.currentPageNum = fileHandle.getNumberOfPages();
-        updateSlotDirectory(rid, fileHandle.getNumberOfPages(), 0); 
+        updateSlotDirectory(rid, fileHandle.getNumberOfPages(), 0);
 
         // Now let's add the new record
         setUpNewPage(newPage, data, length, fileHandle, metaData, metaNumBytes, recordDescriptor.size());
         fileHandle.appendPage(newPage);
         return 0;
     } else {
-        
+
         // Determine if we will use the current page or a previous page
-        void *page = determinePageToUse(rid, fileHandle); 
-        
-        transferRecordToPage(page, data, metaData, newOffset, metaNumBytes, recordDescriptor.size(), length); 
-                
+        void *page = determinePageToUse(rid, fileHandle);
+
+        transferRecordToPage(page, data, metaData, newOffset, metaNumBytes, recordDescriptor.size(), length);
+
         // update the number of records and freeSpaceOffset
-        int numRecords = incrementNumRecords(page);  
+        int numRecords = incrementNumRecords(page);
         int freeSpaceOffset = incrementFreeSpaceOffset(page, length);
-        
+
         // finally update freespace list
         updateFreeSpace(numRecords, freeSpaceOffset, rid.pageNum, fileHandle);
 
         // now we need to enter in the slot directory entry
-        int slotEntryOffset = N_OFFSET - (numRecords * SLOT_SIZE); 
+        int slotEntryOffset = N_OFFSET - (numRecords * SLOT_SIZE);
         memcpy((char *) page + slotEntryOffset, &newOffset, sizeof(int));
         memcpy((char *) page + slotEntryOffset + sizeof(int), &length, sizeof(int));
 
@@ -100,7 +100,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         if (fileHandle.currentPageNum != rid.pageNum) {
             free(page);
         }
-        return 0; 
+        return 0;
     }
     return -1;
 }
@@ -111,8 +111,8 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         readingPage = determinePageToUse(rid, fileHandle);
         readingRID.pageNum = rid.pageNum;
         readingRID.slotNum = rid.slotNum;
-    } 
-    
+    }
+
     if (readingRID.pageNum != rid.pageNum) {
         readingPage = determinePageToUse(rid, fileHandle);
         readingRID.pageNum = rid.pageNum;
@@ -165,10 +165,10 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid) {
     // Determine if we will use the current page or a previous page
     void *page = determinePageToUse(rid, fileHandle);
-    
+
     // empty file or something went wrong?
     if (page == NULL) return -1;
-    
+
     int offset, length;
     getSlotFile(rid.slotNum, page, &offset, &length);
 
@@ -188,7 +188,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
 
     // update freeSpace vector
     fileHandle.freeSpace[rid.pageNum] += length;
-    
+
     // Shifts the data appropriately
     compactMemory(offset, length, page, fileHandle.freeSpace[rid.pageNum]);
 
@@ -209,7 +209,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     // Get new offset and (potentially) new RID. RID could be new if the updated record is now too large for page.
     int offSet = findOpenSlot(fileHandle, length, tempRid);
 
-    
+
     // If the new RID slot is on a different page, update the slot record with the negated version of these values
     if (rid.pageNum != tempRid.pageNum) {
         // because the first open slot is on a new page, just insert record as usual
@@ -227,13 +227,14 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         return 0;
     }
     else {
+    	RecordBasedFileManager::insertRecord(fileHandle, recordDescriptor, data, tempRid);
         // Write record
-        memcpy((char*)page + offSet, data, length);
+        //memcpy((char*)page + offSet, data, length);
 
         // update slot directory
-        int slotEntryOffset = N_OFFSET - (rid.slotNum * SLOT_SIZE);
-        memcpy((char *)page + slotEntryOffset, &offSet, sizeof(int));
-        memcpy((char *)page + slotEntryOffset + sizeof(int), &length, sizeof(int));
+        //int slotEntryOffset = N_OFFSET - ((rid.slotNum + 1) * SLOT_SIZE);
+        //memcpy((char *)page + slotEntryOffset, &offSet, sizeof(int));
+        //memcpy((char *)page + slotEntryOffset + sizeof(int), &length, sizeof(int));
 
         return 0;
     }
@@ -253,29 +254,29 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle
         i = it - recordDescriptor.begin();
         if (it->name == attributeName) {
             fieldPlacement = i;
-            break;    
+            break;
         }
     }
     if (fieldPlacement == -1) {
         // the attribute name was not found
         return -1;
     }
-    // get the page, record and number of fields in the record 
+    // get the page, record and number of fields in the record
     void *page = determinePageToUse(rid, fileHandle);
     void *record = extractRecord(rid.slotNum, page);
     int numFields = getNumberOfFields(record);
 
-    
+
     // Also not sure if void *data is already allocated or not
     int numNullBytes = ceil((double)recordDescriptor.size() / CHAR_BIT);
     int fieldOffset = getFieldOffset(fieldPlacement, numNullBytes, record);
     int nextFieldOffset;
-    
+
     // in order to get the next field offset we need to check if this is the last field
     if ((fieldPlacement + 1) == numFields) {
         int offset, length;
         getSlotFile(rid.slotNum, page, &offset, &length);
-        nextFieldOffset = length;  
+        nextFieldOffset = length;
     } else {
         nextFieldOffset = getFieldOffset(fieldPlacement + 1, numNullBytes, record);
     }
@@ -294,10 +295,10 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle
 }
 
 int RecordBasedFileManager::getFieldOffset(int location, int numNullBytes, const void *record) {
-    int fieldDataOffset = FIELD_OFFSET + numNullBytes + (location * FIELD_OFFSET); 
-    int fieldOffset;
+    int fieldDataOffset = FIELD_OFFSET + numNullBytes + (location * FIELD_OFFSET);
+    short fieldOffset;
     memcpy(&fieldOffset, (char *) record + fieldDataOffset, FIELD_OFFSET);
-    return fieldOffset;
+    return (int)fieldOffset;
 }
 
 f_data RecordBasedFileManager::getNumberOfFields(const void *record) {
@@ -365,7 +366,7 @@ void RecordBasedFileManager::transferRecordToPage(void *page
     // get the NUllBytes
     int numNullBytes = ceil((double)recSize / CHAR_BIT);
 
-    // copy meta data 
+    // copy meta data
     memcpy((char *) page + newOffset, (char *) metaData, metaNumBytes);
 
     // finally copy over the rest of the data
@@ -392,8 +393,8 @@ void RecordBasedFileManager::extractFieldData(int numFields, int length, void *d
 
     // skip over the field offset data a
     offset += numNullBytes + ((numFields + 1) * sizeof(short));
-    length -= offset; 
-    memcpy((char *) data + numNullBytes, (char *) tempData + offset, length); 
+    length -= offset;
+    memcpy((char *) data + numNullBytes, (char *) tempData + offset, length);
 }
 
 
@@ -403,7 +404,7 @@ bool RecordBasedFileManager::isFieldNull(const void *data, int i) {
     memset(bitmask, 0, 1);
     *bitmask = 1 << 7;
     *bitmask >>= i % CHAR_BIT;
-    
+
     // extract the NULL fields indicator from the data
     unsigned char *nullField = (unsigned char*) malloc(1);
     memcpy(nullField, (char *) data + (i / CHAR_BIT), 1);
@@ -415,7 +416,7 @@ bool RecordBasedFileManager::isFieldNull(const void *data, int i) {
 
 std::string RecordBasedFileManager::extractType(const void *data, int *offset, AttrType t, AttrLength l) {
     if (t == TypeInt) {
-        int value; 
+        int value;
         memcpy(&value, (char *) data + *offset, sizeof(int));
         *offset += sizeof(int);
         return std::to_string((long long) value);
@@ -430,7 +431,7 @@ std::string RecordBasedFileManager::extractType(const void *data, int *offset, A
         // first extract the length of the char
         int varCharLength;
         memcpy(&varCharLength, (char *) data + *offset, sizeof(int));
-        
+
         // now generate a C string with the same length plus 1
         *offset += sizeof(int);
         char* s = new char[varCharLength];
@@ -443,20 +444,20 @@ std::string RecordBasedFileManager::extractType(const void *data, int *offset, A
         return str;
     } else {
         // this shouldn't happen since we assume all incoming data is correct
-        return "ERROR EXTRACTING"; 
+        return "ERROR EXTRACTING";
     }
 }
 
 
 int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribute> &descriptor, void *field) {
     short dataOffset = 0;
-    
+
     // enter the number of fields as the first param in the field data
     short numFields = descriptor.size();
     memcpy((char *) field + dataOffset, &numFields, sizeof(short));
     dataOffset += sizeof(short);
 
-    // Copy null field 
+    // Copy null field
     int numNullBytes = ceil((double)numFields / CHAR_BIT);
     memcpy((char *) field + dataOffset, (char *) data, numNullBytes);
     dataOffset += numNullBytes;
@@ -467,7 +468,7 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
 
     int fieldData = sizeof(short) + fieldSize;
     int fieldOffset = sizeof(short) + numNullBytes;
-    
+
     int i;
     for (auto it = descriptor.begin(); it != descriptor.end(); ++it) {
         i = (it - descriptor.begin());
@@ -490,13 +491,13 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
             // this should not happen since we assume all data coming it is always correct, for now
         }
     } // end of for loop
-    return dataOffset; 
+    return dataOffset;
 }
 
 void RecordBasedFileManager::getSlotFile(int slotNum, const void *page, int *offset, int *length) {
-    // first lets get the slot offset 
+    // first lets get the slot offset
     int location = PAGE_SIZE - (((slotNum + 1) * SLOT_SIZE) + META_INFO);
-    memcpy(offset, (char *) page + location, sizeof(int)); 
+    memcpy(offset, (char *) page + location, sizeof(int));
     memcpy(length, (char *) page + location + sizeof(int), sizeof(int));
 }
 
@@ -511,37 +512,37 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
         return -1;
     }
     // if we get here we have a page current page and we need to get its freespace
-    void *page = handle.currentPage; 
-    
+    void *page = handle.currentPage;
+
     int freeSpace = handle.freeSpace[pageNum];
     int newSlotNum;
     if (freeSpace > (size + SLOT_SIZE)) {
         // the current page has enough space to fit a new record
-        newSlotNum = getSlot(handle.currentPage, freeSpace); 
+        newSlotNum = getSlot(handle.currentPage, freeSpace);
         updateSlotDirectory(rid, pageNum, newSlotNum);
         return getFreeSpaceOffset(page);
     }
-    
+
     int sizeOfFile = handle.currentPageNum;
     int retVal = -1;
-    
+
     // we only need to test the pages upto the current one, since we already tested it.
     for (int pageNum = 0; pageNum < sizeOfFile; pageNum++) {
         freeSpace = handle.freeSpace[pageNum];
         // if the free space is big enough to accomodate the new record then stick it in.
         if (freeSpace > (size + SLOT_SIZE)) {
             // open a temp page and scan it for a new offset
-            void *_tempPage = malloc(PAGE_SIZE); 
+            void *_tempPage = malloc(PAGE_SIZE);
             handle.readPage(pageNum, _tempPage);
 
             // update slot directory and get the freeSpaceOffset
-            newSlotNum = getSlot(_tempPage, freeSpace); 
+            newSlotNum = getSlot(_tempPage, freeSpace);
             updateSlotDirectory(rid, pageNum, newSlotNum);
             retVal = getFreeSpaceOffset(_tempPage);
             free(_tempPage);
             break;
         }
-    } 
+    }
     // if we get here than no space was available and we need to append
     return retVal;
 }
@@ -555,7 +556,7 @@ int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
     int numRecords = extractNumRecords(page);
     int numSlotsOffset = PAGE_SIZE - ((numRecords * SLOT_SIZE) + META_INFO);
 
-    // if start of the Slot Direcotry is smaller than number of Slots offset 
+    // if start of the Slot Direcotry is smaller than number of Slots offset
     // than we know we have tombstones
     if (startOfSlotDirectoryOffset < numSlotsOffset) {
         // we need to loop through all the slot directories until an empyt slot is found
@@ -565,9 +566,9 @@ int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
             int offset, length;
             memcpy(&offset, (char *) page + slotsOffset, sizeof(int));
             memcpy(&length, (char *) page + slotsOffset + sizeof(int), sizeof(int));
-            
+
             // check and see if this slot is empty
-            if (length == 0 && offset == 0) 
+            if (length == 0 && offset == 0)
                 return slotCounter;
 
             // keep moving along the slot directory
@@ -575,10 +576,10 @@ int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
         }
 
     } else {
-        // if they are the same then just return the number of records since 
+        // if they are the same then just return the number of records since
         // that will be the next slot number
         return numRecords;
-    }  
+    }
     // if we get here then something went wrong
     return -1;
 }
@@ -586,7 +587,7 @@ int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
 int RecordBasedFileManager::extractNumRecords(const void *page) {
     int numRecords;
     memcpy(&numRecords, (char *) page + N_OFFSET, sizeof(int));
-    return numRecords; 
+    return numRecords;
 }
 
 
@@ -597,7 +598,7 @@ void RecordBasedFileManager::updateSlotDirectory(RID &rid, int pageNum, int slot
 
 int RecordBasedFileManager::getFreeSpaceOffset(const void *data) {
     int freeSpaceOffset;
-    memcpy(&freeSpaceOffset, (char *) data + F_OFFSET, sizeof(int));    
+    memcpy(&freeSpaceOffset, (char *) data + F_OFFSET, sizeof(int));
     return freeSpaceOffset;
 }
 
@@ -619,7 +620,7 @@ void RecordBasedFileManager::setUpNewPage(void *newPage
 
     // next we need to add slot 1 meta data, each slot is 2 ints (8 bytes) in length to fit the offset and length
     int slotOneOffset = N_OFFSET - (2 * sizeof(int));;
-        
+
     // enter the offset first which is zero because its the first record in a page
     int offset = 0;
     memcpy((char *) newPage + slotOneOffset, &offset, sizeof(int));
@@ -629,12 +630,12 @@ void RecordBasedFileManager::setUpNewPage(void *newPage
     // have the FreeSpaceOffset point to the end of the first record
     int freeSpaceOffset = length;
     memcpy((char *) newPage + F_OFFSET, &freeSpaceOffset, sizeof(int));
-    
-    
-    // lets setup the freeSpace list in th fileHandle, we don't need a page number 
+
+
+    // lets setup the freeSpace list in th fileHandle, we don't need a page number
     // because we are making a new page and we just append the end of the list
     int freeSpace = PAGE_SIZE - (freeSpaceOffset + SLOT_SIZE + META_INFO);
-    handle.freeSpace.push_back(freeSpace); 
+    handle.freeSpace.push_back(freeSpace);
 }
 
 
@@ -650,39 +651,39 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     int freeSpaceOffset = extractFreeSpaceOffset(data);
     int startOfCompaction = offset + deletedLength;
     int sizeOfDataBeingCompacted = freeSpaceOffset - startOfCompaction;
-    
+
     // move the data to a temp buffer
     void *dataBeingShifted = malloc(sizeOfDataBeingCompacted);
-    memcpy((char *) dataBeingShifted, (char *) data + startOfCompaction, sizeOfDataBeingCompacted);  
-    
+    memcpy((char *) dataBeingShifted, (char *) data + startOfCompaction, sizeOfDataBeingCompacted);
+
     // now shift the data over and fill the left over with zeros
     int newFreeSpaceOffset = decrementFreeSpaceOffset(data, deletedLength);
     memcpy((char *) data + offset, (char *) dataBeingShifted, sizeOfDataBeingCompacted);
-    memset((char *) data + newFreeSpaceOffset, 0, deletedLength); 
+    memset((char *) data + newFreeSpaceOffset, 0, deletedLength);
 
     // reduce the number of records by 1
     decrementNumRecords(data);
 
-    // TODO: now we need to update all slots with their new offsets 
+    // TODO: now we need to update all slots with their new offsets
     int recordOffset;
-    int startOfSlotDirectoryOffset = newFreeSpaceOffset + freeSpace; 
+    int startOfSlotDirectoryOffset = newFreeSpaceOffset + freeSpace;
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
     while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
         memcpy(&recordOffset, (char *) data + startOfSlotDirectoryOffset, sizeof(int));
         if (recordOffset > 0) {
-            recordOffset -= deletedLength; 
-            memcpy((char *) data + startOfSlotDirectoryOffset, &recordOffset, sizeof(int)); 
+            recordOffset -= deletedLength;
+            memcpy((char *) data + startOfSlotDirectoryOffset, &recordOffset, sizeof(int));
         }
         startOfSlotDirectoryOffset += SLOT_SIZE;
     }
-    
+
     // free up space
     free(dataBeingShifted);
 }
 
 RBFM_ScanIterator::RBFM_ScanIterator() {
     pageNum = 0;
-    slotNum = 0; 
+    slotNum = 0;
     scanPage = NULL;
     value = NULL;
 }
@@ -693,8 +694,8 @@ RBFM_ScanIterator::~RBFM_ScanIterator() {
 }
 
 
-RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, 
-                                        const string &conditionAttribute, const CompOp compOp, 
+RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor,
+                                        const string &conditionAttribute, const CompOp compOp,
                                         const void *value, const vector<string> &attributeNames,
                                         RBFM_ScanIterator &rbfm_ScanIterator) {
     // first lets attach the fileHandle to the scanner iterater
@@ -714,7 +715,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
         }
         rbfm_ScanIterator.setScanPage(_tempScan);
     }
-     
+
     // collect the attribute placements for each record
     int i;
     bool foundCondition = false;
@@ -731,7 +732,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
                 rbfm_ScanIterator.setAttrPlacement(i);
             }
         }
-    } 
+    }
     return 0;
 }
 
@@ -742,7 +743,7 @@ bool RBFM_ScanIterator::isEndOfPage(void *page, int slotNum, int pageNum) {
 
     int startOfSlotDirectoryOffset = freeSpaceOffset + freeSpace;
     int currentSlotOffset = PAGE_SIZE - (((slotNum + 1) * SLOT_SIZE) + META_INFO);
-    if (startOfSlotDirectoryOffset > currentSlotOffset) 
+    if (startOfSlotDirectoryOffset > currentSlotOffset)
        return true;
    return false;
 }
@@ -751,7 +752,7 @@ bool RBFM_ScanIterator::isEndOfPage(void *page, int slotNum, int pageNum) {
 // get the next record
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     bool condNotMet = true;
-    int numRecords = RecordBasedFileManager::extractNumRecords(scanPage); 
+    int numRecords = RecordBasedFileManager::extractNumRecords(scanPage);
     int rc = RBFM_EOF;
 
     // we have to check for empty slots
@@ -762,17 +763,17 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
             rc = RBFM_EOF;
             continue;
         }
-    
+
         // check for end of the page and load new page if needed
         if (isEndOfPage(scanPage, slotNum, pageNum)) {
             handle->readPage(++pageNum, scanPage);
-            numRecords = RecordBasedFileManager::extractNumRecords(scanPage); 
+            numRecords = RecordBasedFileManager::extractNumRecords(scanPage);
             slotNum = 0;
         }
         // enter in the rid info
         rid.pageNum = pageNum;
         rid.slotNum = slotNum++;
-        
+
         // check for NULL Fields and make sure they are null
         int offset, length;
         RecordBasedFileManager::getSlotFile(rid.slotNum, scanPage, &offset, &length);
@@ -782,7 +783,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
             continue;
         }
         // extract the record in the slot
-        void *record = RecordBasedFileManager::extractRecord(rid.slotNum, scanPage); 
+        void *record = RecordBasedFileManager::extractRecord(rid.slotNum, scanPage);
 
         short numFields = RecordBasedFileManager::getNumberOfFields(record);
         int numNullBytes = ceil((double) numFields / CHAR_BIT);
@@ -796,21 +797,21 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
             free(nullField);
             continue;
         }
-        
+
         // we need to determine the offset of condition attribute and extract where it starts
         short startOfCondOffset;
         int condFieldOffset;
         condFieldOffset = FIELD_OFFSET + numNullBytes + (conditionAttribute * FIELD_OFFSET);
         memcpy(&startOfCondOffset, (char *) record + condFieldOffset, FIELD_OFFSET);
-            
+
         // test the condition we need to extract
         bool isCompTrue;
-        
+
         // here we need to run the comparison functions with the data
         if (condType == TypeInt) {
             isCompTrue = processIntComp(startOfCondOffset, compOp, value, record);
         } else if (condType == TypeReal) {
-            isCompTrue = processFloatComp(startOfCondOffset, compOp, value, record); 
+            isCompTrue = processFloatComp(startOfCondOffset, compOp, value, record);
         } else if (condType == TypeVarChar) {
             isCompTrue = processStringComp(startOfCondOffset, compOp, value, record);
         } else {
@@ -825,7 +826,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 
             condNotMet = false;
             rc = 0;
-        } 
+        }
         free(record);
         free(nullField);
     }
@@ -849,13 +850,13 @@ RC RBFM_ScanIterator::close() {
 bool RBFM_ScanIterator::processIntComp(int condOffset, CompOp compOp, const void *value, const void *record) {
     if (compOp == NO_OP) {
         return true;
-    }  
+    }
     int intVal;
     memcpy(&intVal, (char *) value, sizeof(int));
-    
+
     int recordVal;
     memcpy(&recordVal, (char *) record + condOffset, sizeof(int));
-    
+
     switch(compOp) {
         case EQ_OP:     return recordVal == intVal;
         case LT_OP:     return recordVal < intVal;
@@ -875,17 +876,17 @@ bool RBFM_ScanIterator::processFloatComp(int condOffset, CompOp compOp, const vo
 
     float floatVal;
     memcpy(&floatVal, (char *) value, sizeof(float));
-    
+
     float recordVal;
     memcpy(&recordVal, (char *) record + condOffset, sizeof(float));
-    
+
     switch(compOp) {
-        case EQ_OP:     return recordVal == floatVal;    
-        case LT_OP:     return recordVal < floatVal; 
-        case GT_OP:     return recordVal > floatVal; 
-        case LE_OP:     return recordVal <= floatVal; 
-        case GE_OP:     return recordVal >= floatVal; 
-        case NE_OP:     return recordVal != floatVal; 
+        case EQ_OP:     return recordVal == floatVal;
+        case LT_OP:     return recordVal < floatVal;
+        case GT_OP:     return recordVal > floatVal;
+        case LE_OP:     return recordVal <= floatVal;
+        case GE_OP:     return recordVal >= floatVal;
+        case NE_OP:     return recordVal != floatVal;
         default:        return false;
     }
 }
@@ -895,15 +896,15 @@ bool RBFM_ScanIterator::processStringComp(int condOffset, CompOp compOp, const v
     if (compOp == NO_OP) {
         return true;
     }
-    
+
     int valueLength;
     memcpy(&valueLength, (char *) value, sizeof(int));
-    
+
     // now generate a C string with the same length plus 1
     char* s = new char[valueLength + 1];
     memcpy(s, (char *) value + sizeof(int), valueLength);
     s[valueLength] = '\0';
-    
+
     int varCharLength;
     memcpy(&varCharLength, (char *) record + condOffset, sizeof(int));
     condOffset += sizeof(int);
@@ -914,17 +915,17 @@ bool RBFM_ScanIterator::processStringComp(int condOffset, CompOp compOp, const v
 
     bool returnVal;
     switch(compOp) {
-        case 0:     returnVal = true;  
+        case 0:     returnVal = true;
                     break;
-        case 1:     returnVal = strcmp(s, sv) == 0 ? true : false;    
+        case 1:     returnVal = strcmp(s, sv) == 0 ? true : false;
                     break;
-        case 2:     returnVal = strcmp(s, sv) < 0 ? true : false; 
+        case 2:     returnVal = strcmp(s, sv) < 0 ? true : false;
                     break;
         case 3:     returnVal = strcmp(s, sv) > 0 ? true : false;
                     break;
         case 4:     returnVal = strcmp(s, sv) < 0 || strcmp(s, sv) == 0 ? true : false;
                     break;
-        case 5:     returnVal = strcmp(s, sv) > 0 || strcmp(s, sv) == 0 ? true : false; 
+        case 5:     returnVal = strcmp(s, sv) > 0 || strcmp(s, sv) == 0 ? true : false;
                     break;
         case 6:     returnVal = strcmp(s, sv) != 0 ? true : false;
                     break;
@@ -943,7 +944,7 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     AttrType currentType;
     int attrSpot;
 
-    // lets create our nullFields 
+    // lets create our nullFields
     int newNumBytes = ceil((double) sizeOfReturnAttrs / CHAR_BIT);
     char *newNullField = new char[newNumBytes];
     memset(newNullField, 0, newNumBytes);
@@ -964,21 +965,21 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
         short dataOffset;
         memset(&dataOffset, 0, sizeof(short));
         memcpy(&dataOffset, (char *) record + fieldOffset, sizeof(short));
-        
+
         // lets extract the data we need to get the next attribute
         if (RecordBasedFileManager::isFieldNull(nullField, attrSpot)) {
             newNullField[0] = (1 << 7);
-            newNullField[0] >>= attrSpot; 
+            newNullField[0] >>= attrSpot;
             continue;
         }
 
 
         // Here we begin putting the field data into a temp holder
         if (currentType == TypeInt) {
-            memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(int)); 
+            memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(int));
             tempDataOffset += sizeof(int);
         } else if (currentType == TypeReal) {
-            memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(float)); 
+            memcpy((char *) tempData + tempDataOffset, (char *) record + dataOffset, sizeof(float));
             tempDataOffset += sizeof(float);
         } else if (currentType == TypeVarChar) {
             int varCharLength;
@@ -995,10 +996,10 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     // now we can piece together all the data, this will only work if RM layer
     // initializes returnData with NULL
     /********* NOT SURE IF I NEED TO ALLOCATE HERE *************/
-    
+
     memcpy((char *) data, newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
-    
+
     delete newNullField;
     free(tempData);
 }

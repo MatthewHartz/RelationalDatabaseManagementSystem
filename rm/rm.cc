@@ -427,7 +427,26 @@ RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
 {
-    return -1;
+    string fileName;
+    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
+        return -1;
+    }
+
+    // Open the file related to tableName
+    FileHandle handle;
+    if (rbfm->openFile(fileName, handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from tableName
+    vector<Attribute> descriptor;
+    if (getAttributes(tableName, descriptor) == -1) return -1;
+
+    if (rbfm->readAttribute(handle, descriptor, rid, attributeName, data) == -1) return -1;
+
+    if (rbfm->closeFile(handle) == -1) return -1;
+
+    return 0;
 }
 
 // attributeNames are the names of the columns for the select statement
