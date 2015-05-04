@@ -20,7 +20,7 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
 public:
-    RM_ScanIterator() { handle = new FileHandle; };
+    RM_ScanIterator() {}; 
     ~RM_ScanIterator() { free(handle); };
 
     RBFM_ScanIterator rbfmsi;
