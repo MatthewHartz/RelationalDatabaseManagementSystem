@@ -29,8 +29,8 @@ typedef int s_data;;     // slot data size
 // Record ID
 typedef struct
 {
-  signed int pageNum;	// page number
-  signed int slotNum; // slot number in the page
+  int pageNum;	// page number
+  int slotNum; // slot number in the page
 } RID;
 
 

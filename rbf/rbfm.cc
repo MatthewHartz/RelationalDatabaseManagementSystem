@@ -726,7 +726,7 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     int numRecords = decrementNumRecords(data);
 
     // now we need to update all slots with their new offsets
-    int recordOffset;
+    signed int recordOffset;
     int startOfSlotDirectoryOffset = getStartOfDirectoryOffset(numRecords, data);
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
     while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
@@ -752,7 +752,7 @@ int RecordBasedFileManager::getStartOfDirectoryOffset(int numRecords, const void
         RecordBasedFileManager::getSlotFile(slotNum, page, &offset, &length);
 
         // test if it is a record
-        if (length > 0) {
+        if (length != 0) {
             numRecords--;
         }
         currentOffset -= SLOT_SIZE;
