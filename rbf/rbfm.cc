@@ -681,11 +681,11 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     memset((char *) data + newFreeSpaceOffset, 0, deletedLength);
 
     // reduce the number of records by 1
-    decrementNumRecords(data);
+    int numRecords = decrementNumRecords(data);
 
     // now we need to update all slots with their new offsets
     int recordOffset;
-    int startOfSlotDirectoryOffset = newFreeSpaceOffset + freeSpace;
+    int startOfSlotDirectoryOffset = getStartOfDirectoryOffset(numRecords, data);
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
     while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
         memcpy(&recordOffset, (char *) data + startOfSlotDirectoryOffset, sizeof(int));
@@ -717,7 +717,7 @@ int RecordBasedFileManager::getStartOfDirectoryOffset(int numRecords, const void
         slotNum++;
     }
 
-    return 0;
+    return currentOffset;
 }
 
 RBFM_ScanIterator::RBFM_ScanIterator() {

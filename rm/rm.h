@@ -14,7 +14,7 @@ using namespace std;
 
 // function declarations
 void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<Attribute> &descriptor);
-void prepareTablesRecord(const int id, const string &table, const string &file, void *buffer);
+void prepareTablesRecord(const int id, const string &table, const string &file, int tableType, void *buffer);
 void prepareColumnsRecord(const int id, const string &name, const AttrType type, const int length, const int position, void *buffer);
 
 // RM_ScanIterator is an iteratr to go through tuples
@@ -89,13 +89,14 @@ public:
         const vector<string> &attributeNames, // a list of projected attributes
         RM_ScanIterator &rm_ScanIterator);
 
+    RC createSystemTable(const string &tableName, const vector<Attribute> &attrs);
 
 
     vector<Attribute> getTablesDesc() { return this->tablesDescriptor; }
     vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
     void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
     void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
-    RC getTableFileName(const string &tableName, string &fileName);
+    RC getTableFileNameAndTableType(const string &tableName, string &fileName, int &tableType);
 
     // Extra credit work (10 points)
 public:

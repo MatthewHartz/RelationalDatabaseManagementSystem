@@ -41,6 +41,7 @@ RC RelationManager::createCatalog()
     addAttributeToDesc("table-id", TypeInt, (AttrLength)4, tablesDesc);
     addAttributeToDesc("table-name", TypeVarChar, (AttrLength)50, tablesDesc);
     addAttributeToDesc("file-name", TypeVarChar, (AttrLength)50, tablesDesc);
+    addAttributeToDesc("system-table", TypeInt, (AttrLength)4, tablesDesc);
 
     setTablesDesc(tablesDesc);
     setColumnsDesc(columnsDesc);
@@ -49,7 +50,7 @@ RC RelationManager::createCatalog()
     if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) return -1;
 
     // Creates system tables, if error occurs in either createTable call, returns -1
-    if (createTable("Tables", tablesDesc) == -1 || createTable("Columns", columnsDesc) == -1) return -1;
+    if (createSystemTable("Tables", tablesDesc) == -1 || createSystemTable("Columns", columnsDesc) == -1) return -1;
 
     return 0;
 }
@@ -67,8 +68,10 @@ RC RelationManager::deleteCatalog()
 
 RC RelationManager::createTable(const string &tableName, const vector<Attribute> &attrs)
 {
-    // Create the new table file
-    rbfm->createFile(tableName);
+    // Create the new table file and error if the file already exists
+    if (rbfm->createFile(tableName) == -1) {
+        return -1;
+    }
 
     // Initialize template variables
     int maxTableId = 0;
@@ -97,7 +100,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     }
 
     // Add table desc to tables
-    prepareTablesRecord(maxTableId + 1, tableName, tableName, buffer);
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, 1, buffer);
     rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
     // Close tables file
@@ -126,6 +129,7 @@ RC RelationManager::deleteTable(const string &tableName)
 {
     int tableId;
     string fileName;
+    int tableType;
     RID rid;
     void* buffer = malloc(PAGE_SIZE);
 
@@ -135,6 +139,7 @@ RC RelationManager::deleteTable(const string &tableName)
     vector<string> attributes;
     attributes.push_back("table-id");
     attributes.push_back("file-name");
+    attributes.push_back("table-type");
 
     int varLength = tableName.length();
     void *value = malloc(sizeof(int) + varLength);
@@ -150,9 +155,11 @@ RC RelationManager::deleteTable(const string &tableName)
                 rmsi.close();
                 return -1;
             }
+            // initialize table id
             memcpy(&tableId, (char*)buffer + offset, sizeof(int));
             offset += sizeof(int);
 
+            // initialize file name
             int nameLength;
             memcpy(&nameLength, (char*)buffer + offset, sizeof(int));
             offset += sizeof(int);
@@ -160,20 +167,49 @@ RC RelationManager::deleteTable(const string &tableName)
             memcpy(name, (char*)buffer + offset, nameLength);
             name[nameLength] = '\0';
             fileName = std::string(name);
+
+            // initialize table type
+            memcpy(&tableType, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
         }
     }
 
     rmsi.close();
 
-    // Delete tuple from Tables table
-    if (RelationManager::deleteTuple("Tables", rid) == -1) {
+    // Cannot run deleteTable on system tables
+    if (tableType == 1) {
         return -1;
     }
 
+    // Open "Tables" file
+    FileHandle handle;
+    if (rbfm->openFile("Tables", handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from the tableName
+    vector<Attribute> descriptor;
+    if (getAttributes("Tables", descriptor) == -1) return -1;
+
+    // Delete tuple from Tables table
+    if (rbfm->deleteRecord(handle, descriptor, rid) == -1) {
+        return -1;
+    }
+
+    // Initialize selection attributes
     value = malloc(sizeof(int));
     memcpy((char *) value, &tableId, sizeof(int));
     attributes.clear();
     attributes.push_back("table-id");
+
+    // Open "Columns" table"
+    if (rbfm->openFile("Columns", handle) == -1) {
+        return -1;
+    }
+
+    // Get the descriptor from the tableName
+    descriptor.clear();
+    if (getAttributes("Columns", descriptor) == -1) return -1;
 
     // Scan through the Columns table and get all rows where table-id == tableId
     // This will be used to delete each record from Columns as they are found by their RID
@@ -181,7 +217,7 @@ RC RelationManager::deleteTable(const string &tableName)
 
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
-            if (RelationManager::deleteTuple("Columns", rid) == -1) {
+            if (rbfm->deleteRecord(handle, descriptor, rid) == -1) {
                 return -1;
             }
         }
@@ -324,7 +360,14 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
     string fileName;
-    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
+    int tableType;
+
+    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+        return -1;
+    }
+
+    // User cannot insert into System tables
+    if (tableType == 1) {
         return -1;
     }
 
@@ -350,7 +393,14 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
     string fileName;
-    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
+    int tableType;
+
+    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+        return -1;
+    }
+
+    // User cannot insert into System tables
+    if (tableType == 1) {
         return -1;
     }
 
@@ -375,7 +425,14 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
     string fileName;
-    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
+    int tableType;
+
+    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+        return -1;
+    }
+
+    // User cannot insert into System tables
+    if (tableType == 1) {
         return -1;
     }
 
@@ -399,7 +456,8 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
     string fileName;
-    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
+    int tableType;
+    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
         return -1;
     }
 
@@ -428,7 +486,8 @@ RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
 {
     string fileName;
-    if (RelationManager::getTableFileName(tableName, fileName) == -1) {
+    int tableType;
+    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
         return -1;
     }
 
@@ -530,6 +589,61 @@ RC RelationManager::scan(const string &tableName,
     return 0;
 }
 
+RC RelationManager::createSystemTable(const string &tableName, const vector<Attribute> &attrs){
+    // Create the new table file
+        rbfm->createFile(tableName);
+
+        // Initialize template variables
+        int maxTableId = 0;
+        RID rid;
+        void* buffer = malloc(120);
+        vector<string> attributes;
+        attributes.push_back("table-id");
+
+        // search for max table id
+        RM_ScanIterator rmsi;
+        RC rc = RelationManager::scan("Tables", "table-id", NO_OP, NULL, attributes, rmsi);
+
+        if (rc != -1) {
+            while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+                if (!rbfm->isFieldNull(buffer, 0)) {
+                    memcpy(&maxTableId, (char*)buffer + 1, sizeof(int));
+                }
+            }
+            rmsi.close();
+        }
+
+        // Open the "tables" file
+        FileHandle tablesHandle;
+        if (rbfm->openFile("Tables", tablesHandle) == -1) {
+            return -1;
+        }
+
+        // Add table desc to tables
+        prepareTablesRecord(maxTableId + 1, tableName, tableName, 1, buffer);
+        rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
+
+        // Close tables file
+        rbfm->closeFile(tablesHandle);
+
+        // Open "columns" file
+        FileHandle columnsHandle;
+        if (rbfm->openFile("Columns", columnsHandle) == -1) {
+            return -1;
+        }
+
+        // Loop through attrs and iterative insert each row into the columns table
+        for (int i = 0; i < attrs.size(); i++) {
+            prepareColumnsRecord(maxTableId + 1, attrs[i].name, attrs[i].type, attrs[i].length, i + 1, buffer);
+            rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
+        }
+
+        // CLose the columns file
+        rbfm->closeFile(columnsHandle);
+
+        free(buffer);
+        return 0;
+}
 // Extra credit work
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
@@ -550,12 +664,13 @@ RC RelationManager::dropAttribute(const string &tableName, const string &attribu
  * @fileName The file name that is returned by the function
  * @return a RC
  */
-RC RelationManager::getTableFileName(const string &tableName, string &fileName) {
+RC RelationManager::getTableFileNameAndTableType(const string &tableName, string &fileName, int &tableType) {
     RID tempRid;
     RM_ScanIterator rmsi;
 
     vector<string> names;
     names.push_back("file-name");
+    names.push_back("table-type");
 
     // Initialize the condition attribute value to be compared to
     int varLength = tableName.length();
@@ -584,6 +699,11 @@ RC RelationManager::getTableFileName(const string &tableName, string &fileName) 
         offset += nameLength;
         name[nameLength] = '\0';
         fileName = std::string(name);
+
+        // Get tableType
+        int type;
+        memcpy(&type, (char*)nextTupleData + offset, sizeof(int));
+        tableType = type;
     } else {
         rmsi.close();
         free(compValue);
@@ -604,7 +724,7 @@ void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<At
     descriptor.push_back(attr);
 }
 
-void prepareTablesRecord(const int id, const string &table, const string &file, void *buffer) {
+void prepareTablesRecord(const int id, const string &table, const string &file, const int tableType, void *buffer) {
     int offset = 0;
     int length = 0;
     int numFields = 3;
@@ -632,6 +752,10 @@ void prepareTablesRecord(const int id, const string &table, const string &file, 
     offset += sizeof(int);
     memcpy((char *)buffer + offset, file.c_str(), length);
     offset += length;
+
+    // store ID
+    memcpy((char *)buffer + offset, &tableType, sizeof(int));
+    offset += sizeof(int);
 }
 
 void prepareColumnsRecord(const int id, const string &name, const AttrType type, const int length, const int position, void *buffer) {
