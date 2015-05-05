@@ -6,6 +6,7 @@ typedef char byte;
 typedef unsigned PageNum;
 
 #define PAGE_SIZE 4096
+#include <iostream>
 #include <string>
 #include <climits>
 #include <fstream>

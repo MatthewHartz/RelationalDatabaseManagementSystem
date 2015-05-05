@@ -60,13 +60,14 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
             return 0;
         }
         // link this new file handle to this opened file
-        fileHandle.infile = new ifstream(fileName, ios::binary);
         fileHandle.outfile = new ofstream(fileName, ios::binary | ios::in | ios::out);
+        fileHandle.infile = new ifstream(fileName, ios::binary | ios::in);
 
         // We need to scan the file and grab the free space available in a list
         // and we need to set the currentPage number and currentPage if the file is not empty
         fileHandle.infile->seekg(0, ios::end);
         int length = fileHandle.infile->tellg();
+
         // if the file is not empty then we need to scan it
         if (length != 0) {
             int numPages = fileHandle.numPages = length / PAGE_SIZE;
@@ -122,6 +123,7 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
         fileHandle.numPages = 0;
 
         fileHandle.infile->close();
+        fileHandle.outfile->close();
         delete fileHandle.infile;
         delete fileHandle.outfile;
         fileHandle.infile = NULL;

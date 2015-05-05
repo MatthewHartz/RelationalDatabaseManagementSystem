@@ -97,7 +97,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 
         fileHandle.writePage(rid.pageNum, page);
         // if we opened a page that was not the header page then free that memory
-        if (fileHandle.currentPageNum != rid.pageNum) {
+        if (fileHandle.currentPageNum != (unsigned) rid.pageNum) {
             free(page);
         }
         return 0;
@@ -131,8 +131,8 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
     // we need to check for a pointer to another record here
     if (length < 0) {
         RID newRid;
-        newRid.pageNum *= -1;
-        newRid.slotNum *= -1;
+        newRid.pageNum = (offset * -1) - 1;
+        newRid.slotNum = (length * -1) - 1;
         return readRecord(fileHandle, recordDescriptor, newRid, data);
     }
 
@@ -142,6 +142,9 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
 
     // we now need to extract the field data from the record
     extractFieldData(recordDescriptor.size(), length, data, tempData);
+
+    // free up the tempData
+    free(tempData);
 
     return 0;
 }
@@ -163,6 +166,8 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 }
 
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid) {
+    /****** TODO: we need to consider deleting a pointer *********/
+
     // Determine if we will use the current page or a previous page
     void *page = determinePageToUse(rid, fileHandle);
 
@@ -191,7 +196,18 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
 
     // Shifts the data appropriately
     compactMemory(offset, length, page, fileHandle.freeSpace[rid.pageNum]);
+    
+    // we must write the page back to file
+    fileHandle.writePage(rid.pageNum, page);
 
+    // update the currentPage if it was deleted from there 
+    if ((unsigned) rid.pageNum == fileHandle.currentPageNum) {
+        fileHandle.readPage(fileHandle.currentPageNum, fileHandle.currentPage);
+    }
+    // free up memory
+    if (fileHandle.currentPageNum != (unsigned) rid.pageNum) {
+        free(page);
+    }
     return 0;
 }
 
@@ -202,39 +218,65 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     // Delete the old record
     RecordBasedFileManager::deleteRecord(fileHandle, recordDescriptor, rid);
 
-    // Get size of record
-    void *field = malloc(recordDescriptor.size() + 1);
-    int length = getRecordSize(data, recordDescriptor, field);
-
     // Get new offset and (potentially) new RID. RID could be new if the updated record is now too large for page.
-    int offset = findOpenSlot(fileHandle, length, tempRid);
+    short numFields = recordDescriptor.size();
+    int numNullBytes = ceil((double) numFields / CHAR_BIT);
+    int fieldNumBytes = numFields * sizeof(short);
+    int metaNumBytes = (sizeof(short) + numNullBytes + fieldNumBytes);
+    
+    void *metaData = malloc(metaNumBytes);
+    int length = getRecordSize(data, recordDescriptor, metaData);
+    
+    // we need to determine if this length fits in the page of rid
+    int freeSpace = fileHandle.freeSpace[rid.pageNum];
 
     // If the new RID slot is on a different page, update the slot record with the negated version of these values
-    if (rid.pageNum != tempRid.pageNum) {
+    if (length > freeSpace) {
         // because the first open slot is on a new page, just insert record as usual
         if (RecordBasedFileManager::insertRecord(fileHandle, recordDescriptor, data, tempRid) == -1)
             return -1;
 
         //update slot directory with negative values to reflect tombstone
-        tempRid.pageNum *= -1;
-        tempRid.slotNum *= -1;
-
-        int slotEntryOffset = N_OFFSET - (rid.slotNum * SLOT_SIZE);
+        tempRid.pageNum = (tempRid.pageNum + 1) * -1;
+        tempRid.slotNum = (tempRid.slotNum + 1) * -1;
+        
+        int slotEntryOffset = N_OFFSET - ((rid.slotNum + 1) * SLOT_SIZE);
         memcpy((char *)page + slotEntryOffset, &tempRid.pageNum, sizeof(int));
         memcpy((char *)page + slotEntryOffset + sizeof(int), &tempRid.slotNum, sizeof(int));
 
+        fileHandle.writePage(rid.pageNum, page);
+        // if we opened a page that was not the header page then free that memory
+        if (fileHandle.currentPageNum != (unsigned) rid.pageNum) {
+            free(page);
+        }
+
+        free(metaData);
         return 0;
     }
     else {
-    	RecordBasedFileManager::insertRecord(fileHandle, recordDescriptor, data, tempRid);
-        // Write record
-        //memcpy((char*)page + offSet, data, length);
+        page = determinePageToUse(rid, fileHandle);
+        // get the new offset from the page
+        int newOffset = getFreeSpaceOffset(page);
+        transferRecordToPage(page, data, metaData, newOffset, metaNumBytes, recordDescriptor.size(), length);
 
-        // update slot directory
-        //int slotEntryOffset = N_OFFSET - ((rid.slotNum + 1) * SLOT_SIZE);
-        //memcpy((char *)page + slotEntryOffset, &offSet, sizeof(int));
-        //memcpy((char *)page + slotEntryOffset + sizeof(int), &length, sizeof(int));
+        // update the number of records and freeSpaceOffset
+        int numRecords = incrementNumRecords(page);
+        int freeSpaceOffset = incrementFreeSpaceOffset(page, length);
 
+        // finally update freespace list
+        updateFreeSpace(numRecords, freeSpaceOffset, rid.pageNum, fileHandle);
+
+        // now we need to enter in the slot directory entry
+        int slotEntryOffset = N_OFFSET - ((rid.slotNum + 1) * SLOT_SIZE);
+        memcpy((char *) page + slotEntryOffset, &newOffset, sizeof(int));
+        memcpy((char *) page + slotEntryOffset + sizeof(int), &length, sizeof(int));
+
+        fileHandle.writePage(rid.pageNum, page);
+        // if we opened a page that was not the header page then free that memory
+        if (fileHandle.currentPageNum != (unsigned) rid.pageNum) {
+            free(page);
+        }
+        free(metaData);
         return 0;
     }
 
@@ -395,7 +437,7 @@ void RecordBasedFileManager::transferRecordToPage(void *page
 
 void* RecordBasedFileManager::determinePageToUse(const RID &rid, FileHandle &handle) {
     void *page = NULL;
-    if (handle.currentPageNum == rid.pageNum) {
+    if (handle.currentPageNum == (unsigned) rid.pageNum) {
         page = handle.currentPage;
     } else {
         page = malloc(PAGE_SIZE);
