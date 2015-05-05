@@ -689,7 +689,7 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
     while (startOfSlotDirectoryOffset < endOfSlotDirectoryOffset) {
         memcpy(&recordOffset, (char *) data + startOfSlotDirectoryOffset, sizeof(int));
-        if (recordOffset > newFreeSpaceOffset) {
+        if (recordOffset > startOfCompaction) {
             recordOffset -= deletedLength;
             memcpy((char *) data + startOfSlotDirectoryOffset, &recordOffset, sizeof(int));
         }

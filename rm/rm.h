@@ -21,7 +21,7 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 class RM_ScanIterator {
 public:
     RM_ScanIterator() {}; 
-    ~RM_ScanIterator() { free(handle); };
+    ~RM_ScanIterator() {};
 
     RBFM_ScanIterator rbfmsi;
     FileHandle *handle;

@@ -565,6 +565,7 @@ RC RelationManager::getTableFileName(const string &tableName, string &fileName) 
 
     // Scan through Tables table and get the file name where table-name == tableName
     if (RelationManager::scan("Tables", "table-name", EQ_OP, compValue, names, rmsi) == -1) {
+        rmsi.close();
         free(compValue);
         return -1;
     }
@@ -584,6 +585,7 @@ RC RelationManager::getTableFileName(const string &tableName, string &fileName) 
         name[nameLength] = '\0';
         fileName = std::string(name);
     } else {
+        rmsi.close();
         free(compValue);
         return -1;
     }
@@ -665,5 +667,6 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
 RC RM_ScanIterator::close() {
     scanRBFM->closeFile(*handle);
+    free(handle);
     return 0;
 }
