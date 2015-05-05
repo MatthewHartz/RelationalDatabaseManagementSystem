@@ -57,7 +57,7 @@ typedef enum { NO_OP = 0,  // no condition
 } CompOp;
 
 /****************************************************************************
-The scan iterator is NOT required to be implemented for part 1 of the project 
+The scan iterator is NOT required to be implemented for part 1 of the project
 *****************************************************************************/
 
 # define RBFM_EOF (-1)  // end of a scan operator
@@ -76,7 +76,7 @@ The scan iterator is NOT required to be implemented for part 1 of the project
 
 class RBFM_ScanIterator {
 public:
-        
+
     RBFM_ScanIterator();
     ~RBFM_ScanIterator();
 
@@ -99,7 +99,7 @@ public:
 
 private:
     FileHandle *handle;
-    vector<int> attrPlacement; 
+    vector<int> attrPlacement;
     vector<AttrType> attrTypes;
     const void *value;
     void *scanPage;
@@ -114,7 +114,7 @@ private:
     bool processFloatComp(int condOffset, CompOp compOp, const void *value, const void *record);
     bool processStringComp(int condOffset, CompOp compOp, const void *value, const void *record);
     void extractScannedData(void *record, void *data, int length, int numRecords, void *nullField);
-    bool isEndOfPage(void *page, int slotNum, int pageNum);
+    bool isEndOfPage(void *page, int numRecords, int slotNum, int pageNum);
 };
 
 
@@ -125,11 +125,11 @@ public:
 	static RecordBasedFileManager* instance();
 
 	RC createFile(const string &fileName);
-  
+
 	RC destroyFile(const string &fileName);
-  
+
 	RC openFile(const string &fileName, FileHandle &fileHandle);
-  
+
 	RC closeFile(FileHandle &fileHandle);
 
     //  Format of the data passed into the function is the following:
@@ -148,7 +148,7 @@ public:
     RC insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid);
 
     RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
-  
+
     // This method will be mainly used for debugging/testing
     RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
 
@@ -162,7 +162,7 @@ public:
 
     RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName, void *data);
 
-    // scan returns an iterator to allow the caller to go through the results one by one. 
+    // scan returns an iterator to allow the caller to go through the results one by one.
     RC scan(FileHandle &fileHandle,
         const vector<Attribute> &recordDescriptor,
         const string &conditionAttribute,
@@ -178,6 +178,7 @@ public:
     static void* extractRecord(int slotNum, const void *page);
     static f_data getNumberOfFields(const void *record);
     static int getFieldOffset(int location, int numNullBytes, const void *record);
+    static int getStartOfDirectoryOffset(int numRecords, const void* page);
 
 public:
 

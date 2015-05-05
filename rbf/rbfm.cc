@@ -683,7 +683,7 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
     // reduce the number of records by 1
     decrementNumRecords(data);
 
-    // TODO: now we need to update all slots with their new offsets
+    // now we need to update all slots with their new offsets
     int recordOffset;
     int startOfSlotDirectoryOffset = newFreeSpaceOffset + freeSpace;
     int endOfSlotDirectoryOffset = PAGE_SIZE - META_INFO;
@@ -698,6 +698,26 @@ void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *
 
     // free up space
     free(dataBeingShifted);
+}
+
+int RecordBasedFileManager::getStartOfDirectoryOffset(int numRecords, const void* page) {
+    int currentOffset = N_OFFSET;
+    int slotNum = 0;
+
+    while (numRecords > 0) {
+        // Pull out the slot information
+        int offset, length;
+        RecordBasedFileManager::getSlotFile(slotNum, page, &offset, &length);
+
+        // test if it is a record
+        if (length > 0) {
+            numRecords--;
+        }
+        currentOffset -= SLOT_SIZE;
+        slotNum++;
+    }
+
+    return 0;
 }
 
 RBFM_ScanIterator::RBFM_ScanIterator() {
@@ -756,17 +776,20 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
 }
 
 
-bool RBFM_ScanIterator::isEndOfPage(void *page, int slotNum, int pageNum) {
+bool RBFM_ScanIterator::isEndOfPage(void *page, int numRecords, int slotNum, int pageNum) {
+    // current free space offset
     int freeSpaceOffset = RecordBasedFileManager::extractFreeSpaceOffset(page);
+    // Number of free space in the file
     int freeSpace = handle->freeSpace[pageNum];
 
-    int startOfSlotDirectoryOffset = freeSpaceOffset + freeSpace;
+    // Get the beginning of slot directory
+    // freeSpaceOffset + freeSpace
+    int startOfSlotDirectoryOffset = RecordBasedFileManager::getStartOfDirectoryOffset(numRecords, page);
     int currentSlotOffset = PAGE_SIZE - (((slotNum + 1) * SLOT_SIZE) + META_INFO);
     if (startOfSlotDirectoryOffset > currentSlotOffset)
        return true;
    return false;
 }
-
 
 // get the next record
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
@@ -777,14 +800,14 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     // we have to check for empty slots
     while (condNotMet) {
         // if we on on the last page and at the end of the page end this search
-        if ((unsigned) pageNum == handle->currentPageNum && isEndOfPage(scanPage, slotNum, pageNum)) {
+        if ((unsigned) pageNum == handle->currentPageNum && isEndOfPage(scanPage, numRecords, slotNum, pageNum)) {
             condNotMet = false;
             rc = RBFM_EOF;
             continue;
         }
 
         // check for end of the page and load new page if needed
-        if (isEndOfPage(scanPage, slotNum, pageNum)) {
+        if (isEndOfPage(scanPage, numRecords, slotNum, pageNum)) {
             handle->readPage(++pageNum, scanPage);
             numRecords = RecordBasedFileManager::extractNumRecords(scanPage);
             slotNum = 0;
