@@ -177,6 +177,18 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     int offset, length;
     getSlotFile(rid.slotNum, page, &offset, &length);
 
+    // Test if the slot id is a pointer, and if so collect the RID and return deleteRecord with the new RID.
+    if (length < 0) {
+        RID newRid;
+        newRid.pageNum = (offset * -1) - 1;
+        newRid.slotNum = (length * -1) - 1;
+        return deleteRecord(fileHandle, recordDescriptor, newRid);
+    }
+    // Cannot delete a tombstone, therefore error.
+    if (length == 0) {
+        return -1;
+    }
+
     // Write uninitialized data into the page where the record currently lies
     //void *newData = malloc(length);
     //memcpy(page, (char*) newData, length);

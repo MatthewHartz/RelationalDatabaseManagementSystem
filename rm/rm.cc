@@ -41,7 +41,7 @@ RC RelationManager::createCatalog()
     addAttributeToDesc("table-id", TypeInt, (AttrLength)4, tablesDesc);
     addAttributeToDesc("table-name", TypeVarChar, (AttrLength)50, tablesDesc);
     addAttributeToDesc("file-name", TypeVarChar, (AttrLength)50, tablesDesc);
-    addAttributeToDesc("system-table", TypeInt, (AttrLength)4, tablesDesc);
+    addAttributeToDesc("table-type", TypeInt, (AttrLength)4, tablesDesc);
 
     setTablesDesc(tablesDesc);
     setColumnsDesc(columnsDesc);
@@ -100,7 +100,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     }
 
     // Add table desc to tables
-    prepareTablesRecord(maxTableId + 1, tableName, tableName, 1, buffer);
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, 0, buffer);
     rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
     // Close tables file
