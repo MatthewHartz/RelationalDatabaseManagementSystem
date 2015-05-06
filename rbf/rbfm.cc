@@ -47,7 +47,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
     // allocate enought space for the meta data of each record
     // Meta Data: numFields | NullBytes | field Offsets |
     void *metaData = malloc(metaNumBytes);
-    int length = getRecordSize(data, recordDescriptor, metaData);
+    int length = buildMetaData(data, recordDescriptor, metaData);
 
     // findOpenSlot() will search for an open slot in the slot directory
     // if it finds one it will update the rid and return the new offset for the record
@@ -237,7 +237,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     int metaNumBytes = (sizeof(short) + numNullBytes + fieldNumBytes);
     
     void *metaData = malloc(metaNumBytes);
-    int length = getRecordSize(data, recordDescriptor, metaData);
+    int length = buildMetaData(data, recordDescriptor, metaData);
     
     // we need to determine if this length fits in the page of rid
     int freeSpace = fileHandle.freeSpace[rid.pageNum];
@@ -523,7 +523,7 @@ std::string RecordBasedFileManager::extractType(const void *data, int *offset, A
 }
 
 
-int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribute> &descriptor, void *field) {
+int RecordBasedFileManager::buildMetaData(const void *data, const vector<Attribute> &descriptor, void *field) {
     short dataOffset = 0;
 
     // enter the number of fields as the first param in the field data

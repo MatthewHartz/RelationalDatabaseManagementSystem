@@ -198,7 +198,7 @@ private:
     int getFreeSpaceOffset(const void *data);
     void setUpNewPage(void *newPage, const void *data, int length, FileHandle &handle, void *field, int fieldNumBytes, int recSize);
     void updateSlotDirectory(RID &rid, int pageNum, int slotNum);
-    int getRecordSize(const void *data, const vector<Attribute> &descriptor, void *field);
+    int buildMetaData(const void *data, const vector<Attribute> &descriptor, void *field);
     void* determinePageToUse(const RID &rid, FileHandle &handle);
     void transferRecordToPage(void *page, const void *data, void *metaData, int newOffset, int fieldNumBytes, int recSize, int length);
     int incrementNumRecords(void *page);
