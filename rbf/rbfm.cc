@@ -228,7 +228,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     RID tempRid;
 
     // Delete the old record
-    RecordBasedFileManager::deleteRecord(fileHandle, recordDescriptor, rid);
+    if (RecordBasedFileManager::deleteRecord(fileHandle, recordDescriptor, rid) == -1) return -1;
 
     // Get new offset and (potentially) new RID. RID could be new if the updated record is now too large for page.
     short numFields = recordDescriptor.size();
@@ -506,8 +506,10 @@ std::string RecordBasedFileManager::extractType(const void *data, int *offset, A
 
         // now generate a C string with the same length plus 1
         *offset += sizeof(int);
-        char* s = new char[varCharLength];
+        char* s = new char[varCharLength + sizeof(char)];
         memcpy(s, (char *) data + *offset, varCharLength);
+        char value = '\0';
+        memcpy(s + varCharLength, &value, sizeof(char));
 
         std::string str(s);
         *offset += varCharLength;
@@ -547,7 +549,7 @@ int RecordBasedFileManager::getRecordSize(const void *data, const vector<Attribu
         int of = i * sizeof(short);
         if (isFieldNull(data, i)) {
             // don't add anything to dataOffset
-            memcpy((char *) field + (i * sizeof(short)), &dataOffset, sizeof(short));
+            memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
         } else if (it->type == TypeInt) {
             memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
             dataOffset += sizeof(int);

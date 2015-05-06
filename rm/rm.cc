@@ -165,6 +165,7 @@ RC RelationManager::deleteTable(const string &tableName)
             offset += sizeof(int);
             char* name = new char[nameLength + 1];
             memcpy(name, (char*)buffer + offset, nameLength);
+            offset += nameLength;
             name[nameLength] = '\0';
             fileName = std::string(name);
 
@@ -177,7 +178,7 @@ RC RelationManager::deleteTable(const string &tableName)
     rmsi.close();
 
     // Cannot run deleteTable on system tables
-    if (tableType == 1) {
+    if (tableType != 0) {
         return -1;
     }
 
@@ -400,7 +401,7 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
     }
 
     // User cannot insert into System tables
-    if (tableType == 1) {
+    if (tableType != 0) {
         return -1;
     }
 
@@ -432,7 +433,7 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
     }
 
     // User cannot insert into System tables
-    if (tableType == 1) {
+    if (tableType != 0) {
         return -1;
     }
 
