@@ -91,7 +91,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         updateFreeSpace(numRecords, freeSpaceOffset, rid.pageNum, fileHandle);
 
         // now we need to enter in the slot directory entry
-        int slotEntryOffset = N_OFFSET - (numRecords * SLOT_SIZE);
+        int slotEntryOffset = N_OFFSET - ((rid.slotNum + 1) * SLOT_SIZE);
         memcpy((char *) page + slotEntryOffset, &newOffset, sizeof(int));
         memcpy((char *) page + slotEntryOffset + sizeof(int), &length, sizeof(int));
 
@@ -624,11 +624,11 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
 
 int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
     int freeSpaceOffset = extractFreeSpaceOffset(page);
-    int startOfSlotDirectoryOffset = freeSpaceOffset + freeSpace;
+    int numRecords = extractNumRecords(page);
+    int startOfSlotDirectoryOffset = getStartOfDirectoryOffset(numRecords, page);
 
     // we need to test and see if the number of slots directories is equal to the
     // start of the Slot direcotry offset. If its not then we have tombstones
-    int numRecords = extractNumRecords(page);
     int numSlotsOffset = PAGE_SIZE - ((numRecords * SLOT_SIZE) + META_INFO);
 
     // if start of the Slot Direcotry is smaller than number of Slots offset
