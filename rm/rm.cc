@@ -87,7 +87,10 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
             if (!rbfm->isFieldNull(buffer, 0)) {
-                memcpy(&maxTableId, (char*)buffer + 1, sizeof(int));
+                int tableIdTemp;
+                memcpy(&tableIdTemp, (char*)buffer + 1, sizeof(int));
+
+                if (tableIdTemp > maxTableId) maxTableId = tableIdTemp;
             }
         }
         rmsi.close();

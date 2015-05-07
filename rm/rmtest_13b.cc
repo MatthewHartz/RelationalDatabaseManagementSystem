@@ -18,9 +18,9 @@ RC TEST_RM_13b(const string &tableName)
     vector<char *> tuples;
 	string tupleName;
 	char *suffix = (char *)malloc(10);
-	
+
     bool nullBit = false;
-	
+
     // GetAttributes
     vector<Attribute> attrs;
     RC rc = rm->getAttributes(tableName, attrs);
@@ -33,7 +33,7 @@ RC TEST_RM_13b(const string &tableName)
     unsigned char *nullsIndicatorWithNull = (unsigned char *) malloc(nullAttributesIndicatorActualSize);
 	memset(nullsIndicatorWithNull, 0, nullAttributesIndicatorActualSize);
 
-	// age field : NULL 
+	// age field : NULL
 	nullsIndicatorWithNull[0] = 64; // 01000000
 
     for(int i = 0; i < numTuples; i++)
@@ -74,7 +74,7 @@ RC TEST_RM_13b(const string &tableName)
     {
     	// Check the first bit of the returned data since we only returns one attribute in this test case
     	// However, the age with NULL should not be returned since the condition NULL > 25 can't hold.
-    	// All comparison operations with NULL should return FALSE 
+    	// All comparison operations with NULL should return FALSE
     	// (e.g., NULL > 25, NULL >= 25, NULL <= 25, NULL < 25, NULL == 25, NULL != 25: ALL FALSE)
 		nullBit = *(unsigned char *)((char *)returnedData) & (1 << 7);
 		if (!nullBit) {
@@ -100,9 +100,9 @@ RC TEST_RM_13b(const string &tableName)
     free(returnedData);
 
 	rc = rm->deleteTable("tbl_b_employee5");
-	
+
     cout << "***** [PASS] Test Case 13B Passed *****" << endl << endl;
-    
+
     return success;
 }
 
