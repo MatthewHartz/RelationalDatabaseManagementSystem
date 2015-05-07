@@ -61,7 +61,7 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
         }
         // link this new file handle to this opened file
         fileHandle.outfile = new ofstream(fileName, ios::binary | ios::in | ios::out);
-        fileHandle.infile = new ifstream(fileName, ios::binary | ios::in);
+        fileHandle.infile = new ifstream(fileName, ios::binary);
 
         // We need to scan the file and grab the free space available in a list
         // and we need to set the currentPage number and currentPage if the file is not empty

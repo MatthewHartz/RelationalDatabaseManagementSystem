@@ -347,7 +347,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         memcpy(&attr.length, (char*)data + offset, sizeof(int));
 
         attrs.push_back(attr);
-        delete name;
+        delete []name;
     }
 
     free(compValue);
@@ -472,8 +472,10 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
-    if (rbfm->readRecord(handle, descriptor, rid, data) == -1) return -1;
-
+    if (rbfm->readRecord(handle, descriptor, rid, data) == -1) {
+        rbfm->closeFile(handle);
+        return -1;
+    }
     if (rbfm->closeFile(handle) == -1) return -1;
 
     return 0;
@@ -502,8 +504,10 @@ RC RelationManager::readAttribute(const string &tableName, const RID &rid, const
     vector<Attribute> descriptor;
     if (getAttributes(tableName, descriptor) == -1) return -1;
 
-    if (rbfm->readAttribute(handle, descriptor, rid, attributeName, data) == -1) return -1;
-
+    if (rbfm->readAttribute(handle, descriptor, rid, attributeName, data) == -1){
+        rbfm->closeFile(handle);
+        return -1;
+    }
     if (rbfm->closeFile(handle) == -1) return -1;
 
     return 0;
@@ -566,7 +570,7 @@ RC RelationManager::scan(const string &tableName,
         name[nameLength] = '\0';
         fileName = std::string(name);
 
-        delete name;
+        delete []name;
     }
 
     rbfm->closeFile(handle);
@@ -792,6 +796,6 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
 RC RM_ScanIterator::close() {
     scanRBFM->closeFile(*handle);
-    free(handle);
+    delete handle;
     return 0;
 }

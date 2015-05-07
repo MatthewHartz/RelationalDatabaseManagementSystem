@@ -550,13 +550,14 @@ int RecordBasedFileManager::buildMetaData(const void *data, const vector<Attribu
         if (isFieldNull(data, i)) {
             // don't add anything to dataOffset
             memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
+        // find the type and calculate the field location and enter the dataOffset
         } else if (it->type == TypeInt) {
             memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
             dataOffset += sizeof(int);
         } else if (it->type == TypeReal) {
             memcpy((char *) field + (fieldOffset + of), &dataOffset, sizeof(short));
             dataOffset += sizeof(float);
-       } else if (it->type == TypeVarChar) {
+        } else if (it->type == TypeVarChar) {
             memcpy((char *) field + (fieldOffset + (i * sizeof(short))), &dataOffset, sizeof(short));
             int varCharLength;
             memcpy(&varCharLength, (char *) data + (dataOffset - fieldData), sizeof(int));
@@ -833,13 +834,6 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
 
 
 bool RBFM_ScanIterator::isEndOfPage(void *page, int numRecords, int slotNum, int pageNum) {
-    // current free space offset
-    int freeSpaceOffset = RecordBasedFileManager::extractFreeSpaceOffset(page);
-    // Number of free space in the file
-    int freeSpace = handle->freeSpace[pageNum];
-
-    // Get the beginning of slot directory
-    // freeSpaceOffset + freeSpace
     int startOfSlotDirectoryOffset = RecordBasedFileManager::getStartOfDirectoryOffset(numRecords, page);
     int currentSlotOffset = PAGE_SIZE - (((slotNum + 1) * SLOT_SIZE) + META_INFO);
     if (startOfSlotDirectoryOffset > currentSlotOffset)
@@ -1030,8 +1024,8 @@ bool RBFM_ScanIterator::processStringComp(int condOffset, CompOp compOp, const v
         default:    returnVal = false;
                     break;
     }
-    delete s;
-    delete sv;
+    delete []s;
+    delete []sv;
     return returnVal;
 }
 
@@ -1098,7 +1092,7 @@ void RBFM_ScanIterator::extractScannedData(void *record, void *data, int length,
     memcpy((char *) data, newNullField, newNumBytes);
     memcpy((char *) data + newNumBytes, (char *) tempData, tempDataOffset);
 
-    delete newNullField;
+    delete []newNullField;
     free(tempData);
 }
 
