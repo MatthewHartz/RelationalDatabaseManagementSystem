@@ -52,6 +52,7 @@ class IndexManager {
 
     private:
         static IndexManager *_index_manager;
+        PagedFileManager *pfm;
 };
 
 class IX_ScanIterator {
@@ -71,6 +72,11 @@ class IXFileHandle {
 
         IXFileHandle();  							// Constructor
         ~IXFileHandle(); 							// Destructor
+
+        FileHandle getHandle() { return *this->handle; }
+
+    private:
+        FileHandle *handle;
 };
 
 // print out the error message for a given return code

@@ -13,6 +13,7 @@ IndexManager* IndexManager::instance()
 
 IndexManager::IndexManager()
 {
+    pfm = PagedFileManager::instance();
 }
 
 IndexManager::~IndexManager()
@@ -21,22 +22,24 @@ IndexManager::~IndexManager()
 
 RC IndexManager::createFile(const string &fileName)
 {
-    return -1;
+    return pfm->createFile(fileName);
 }
 
 RC IndexManager::destroyFile(const string &fileName)
 {
-    return -1;
+    return pfm->destroyFile(fileName);
 }
 
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
 {
-    return -1;
+    FileHandle handle = ixFileHandle.getHandle();
+    return pfm->openFile(fileName, handle);
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
-    return -1;
+    FileHandle handle = ixfileHandle.getHandle();
+    return pfm->closeFile(handle);
 }
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
