@@ -8,6 +8,11 @@
 
 # define IX_EOF (-1)  // end of the index scan
 
+// Constants
+const int NODE_FREE = PAGE_SIZE - sizeof(int);
+const byte NODE_TYPE = PAGE_SIZE - (sizeof(int) + 1); // 0 is node and 1 is leaf (I was tempted to use ENUM but emums are ints.
+const int NODE_POINTER = PAGE_SIZE - ((sizeof(int) * 2) + 1); // This will only exist for leaf nodes
+
 class IX_ScanIterator;
 class IXFileHandle;
 
@@ -29,6 +34,7 @@ class IndexManager {
         RC closeFile(IXFileHandle &ixfileHandle);
 
         // Insert an entry into the given index that is indicated by the given ixfileHandle
+        // www.sanfoundry.com/cpp-program-to-implement-b-tree
         RC insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
 
         // Delete an entry from the given index that is indicated by the given fileHandle
@@ -45,6 +51,15 @@ class IndexManager {
 
         // Print the B+ tree JSON record in pre-order
         void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
+
+        // Splits the child into two seperate nodes (odd will push left)
+        void splitChild();
+
+        // Traverses the tree
+        void traverse();
+
+        // Deteremines if the page has enough space
+        bool hasEnoughSpace(void *data, AttrType type);
 
     protected:
         IndexManager();
@@ -75,9 +90,12 @@ class IXFileHandle {
 
         FileHandle &getHandle() { return *this->handle; }
         void setHandle(FileHandle &h) { handle = &h; }
+        void setRoot(void *data) { root = data; }
 
     private:
         FileHandle *handle;
+        void* root;
+
 };
 
 // print out the error message for a given return code
