@@ -40,14 +40,10 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
     // append the root page if the file is empty
     if (handle->numPages == 0) {
         // Initialize the root page
-        void *data = malloc(PAGE_SIZE);
-        memset(data, 0, PAGE_SIZE);
-
-        int freeSpace = PAGE_SIZE - 5;
-        memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
-
-        int nodeType = 0;
-        memcpy((char*)data + NODE_TYPE, &nodeType, sizeof(byte));
+        void *data;
+        if (initializeNewNode(data, TypeNode) == -1) {
+            return -1;
+        }
 
         if (handle->appendPage(data) == -1) {
             return -1;
@@ -96,6 +92,32 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
+}
+
+int IndexManager::initializeNewNode(void *data, NodeType type) {
+    // initially set the page to 4096 0's
+    data = malloc(PAGE_SIZE);
+    memset(data, 0, PAGE_SIZE);
+
+    // initializes the free space slot with the free space value
+    int freeSpace = PAGE_SIZE - 5;
+    memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
+
+    // sets the node type
+    int nodeType;
+    switch (type) {
+        case TypeNode:
+            nodeType = 0;
+            break;
+        case TypeLeaf:
+            nodeType = 1;
+            break;
+        default:
+            return -1;
+    }
+
+    // initializes the node type slot with node type
+    memcpy((char*)data + NODE_TYPE, &nodeType, sizeof(byte));
 }
 
 IX_ScanIterator::IX_ScanIterator()

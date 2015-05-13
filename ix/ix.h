@@ -13,6 +13,9 @@ const int NODE_FREE = PAGE_SIZE - sizeof(int);
 const byte NODE_TYPE = PAGE_SIZE - (sizeof(int) + 1); // 0 is node and 1 is leaf (I was tempted to use ENUM but emums are ints.
 const int NODE_POINTER = PAGE_SIZE - ((sizeof(int) * 2) + 1); // This will only exist for leaf nodes
 
+// Nodes
+typedef enum { TypeNode = 0, TypeLeaf } NodeType;
+
 class IX_ScanIterator;
 class IXFileHandle;
 
@@ -60,6 +63,9 @@ class IndexManager {
 
         // Deteremines if the page has enough space
         bool hasEnoughSpace(void *data, AttrType type);
+
+        // Initializes a new node, setting it's free space and node type
+        int initializeNewNode(void *data, NodeType type);
 
     protected:
         IndexManager();
