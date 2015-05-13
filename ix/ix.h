@@ -73,7 +73,8 @@ class IXFileHandle {
         IXFileHandle();  							// Constructor
         ~IXFileHandle(); 							// Destructor
 
-        FileHandle getHandle() { return *this->handle; }
+        FileHandle &getHandle() { return *this->handle; }
+        void setHandle(FileHandle &h) { handle = &h; }
 
     private:
         FileHandle *handle;

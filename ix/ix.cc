@@ -32,14 +32,20 @@ RC IndexManager::destroyFile(const string &fileName)
 
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
 {
-    FileHandle handle = ixFileHandle.getHandle();
-    return pfm->openFile(fileName, handle);
+    FileHandle* handle = new FileHandle;
+    if (pfm->openFile(fileName, *handle) == -1) return -1;
+    ixFileHandle.setHandle(*handle);
+
+    return 0;
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
-    FileHandle handle = ixfileHandle.getHandle();
-    return pfm->closeFile(handle);
+    FileHandle* handle = &ixfileHandle.getHandle();
+    if (pfm->closeFile(*handle) == -1) return -1;
+    delete handle;
+
+    return 0;
 }
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
