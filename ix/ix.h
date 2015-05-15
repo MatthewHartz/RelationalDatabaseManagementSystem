@@ -59,13 +59,10 @@ class IndexManager {
         void splitChild();
 
         // Traverses the tree
-        void traverse();
+        void traverse(void *data, const Attribute &attribute);
 
-        // Deteremines if the page has enough space
-        bool hasEnoughSpace(void *data, AttrType type);
-
-        // Initializes a new node, setting it's free space and node type
-        int initializeNewNode(void *data, NodeType type);
+        // Determines if the page has enough space
+        bool hasEnoughSpace(void *data, const Attribute &attribute);
 
     protected:
         IndexManager();
@@ -97,10 +94,13 @@ class IXFileHandle {
         FileHandle &getHandle() { return *this->handle; }
         void setHandle(FileHandle &h) { handle = &h; }
         void setRoot(void *data) { root = data; }
+        int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type
+        int getAvailablePageNumber(); // This helper function will get the first available page
 
     private:
         FileHandle *handle;
         void* root;
+        vector<int> freePages; // when a page becomes free on delete, it is added to this list.  This will be used first when opening a new page.
 
 };
 
