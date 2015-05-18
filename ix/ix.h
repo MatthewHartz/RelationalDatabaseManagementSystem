@@ -62,7 +62,7 @@ class IndexManager {
         void splitChild();
 
         // Traverses the tree
-        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle);
+        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle, int leftPageNum);
 
         // Determines if the page has enough space
         bool hasEnoughSpace(void *data, const Attribute &attribute);
@@ -106,11 +106,13 @@ class IXFileHandle {
         FileHandle &getHandle() { return *this->handle; }
         void setHandle(FileHandle &h) { handle = &h; }
         void setRoot(void *data) { handle->currentPage = data; };
-        void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)) };
+        void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
         void* getRoot() { return handle->currentPage; };
         int getFreeSpace(void *data);
-        int getLeftPointer(void *data);
-        int getRightPointer(void *data);
+        int getLeftPointer(void *node);
+        int getRightPointer(void *node);
+        void setLeftPointer(void *node, int leftPageNum);
+        void setRightPointer(void *node, int rightPageNum);
         int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type
         int getAvailablePageNumber(); // This helper function will get the first available page
 
