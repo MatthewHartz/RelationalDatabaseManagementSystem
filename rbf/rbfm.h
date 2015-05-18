@@ -2,6 +2,7 @@
 #define _rbfm_h_
 
 #include <string>
+#include <cstdlib>
 #include <vector>
 #include <climits>
 #include <iostream>

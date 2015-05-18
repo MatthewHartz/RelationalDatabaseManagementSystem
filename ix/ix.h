@@ -10,8 +10,11 @@
 
 // Constants
 const int NODE_FREE = PAGE_SIZE - sizeof(int);
-const byte NODE_TYPE = PAGE_SIZE - (sizeof(int) + 1); // 0 is node and 1 is leaf (I was tempted to use ENUM but emums are ints.
-const int NODE_POINTER = PAGE_SIZE - ((sizeof(int) * 2) + 1); // This will only exist for leaf nodes
+const int NODE_TYPE = PAGE_SIZE - ((sizeof(int) * 3) + sizeof(byte));
+const int NODE_RIGHT = PAGE_SIZE - ((sizeof(int) * 2));
+const int NODE_LEFT = PAGE_SIZE - ((sizeof(int) * 3));
+
+const int DEFAULT_FREE = PAGE_SIZE - 13;
 
 // Nodes
 typedef enum { TypeNode = 0, TypeLeaf } NodeType;
@@ -59,10 +62,17 @@ class IndexManager {
         void splitChild();
 
         // Traverses the tree
-        void traverse(void *data, const Attribute &attribute);
+        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixfileHandle);
 
         // Determines if the page has enough space
         bool hasEnoughSpace(void *data, const Attribute &attribute);
+
+        // returns the type of node 
+        NodeType getNodeType(void *node);
+
+        // insert the Director Key <key, next pointer> into a non-leaf node
+        RC insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum);
+        
 
     protected:
         IndexManager();
@@ -93,13 +103,13 @@ class IXFileHandle {
 
         FileHandle &getHandle() { return *this->handle; }
         void setHandle(FileHandle &h) { handle = &h; }
-        void setRoot(void *data) { root = data; }
+        void setRoot(void *data) { handle->currentPage = data; };
+        void* getRoot() { return handle->currentPage; };
         int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type
         int getAvailablePageNumber(); // This helper function will get the first available page
 
     private:
         FileHandle *handle;
-        void* root;
         vector<int> freePages; // when a page becomes free on delete, it is added to this list.  This will be used first when opening a new page.
 
 };

@@ -30,7 +30,39 @@ RC RecordBasedFileManager::destroyFile(const string &fileName) {
 }
 
 RC RecordBasedFileManager::openFile(const string &fileName, FileHandle &fileHandle) {
-    return pfm->openFile(fileName, fileHandle);
+    if(pfm->openFile(fileName, fileHandle) == -1) {
+        return -1;
+    }
+
+    // if the file is not empty then we need to scan it
+    if (fileHandle.numPages > 0) {
+        fileHandle.currentPageNum = fileHandle.numPages - 1;
+
+        void *page = malloc(PAGE_SIZE);
+        for (int i = 0; i <fileHandle.numPages; i++) {
+            // read the page and extract the free space
+            fileHandle.readPage(i, page);
+
+            // we need the number of records and freeSpaceOffset to calculate the freeSpace
+            int numRecords;
+            memcpy(&numRecords, (char *) page + N_OFFSET, sizeof(int));
+
+            int freeSpaceOffset;
+            memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
+
+            // Now we can derive the freeSpace
+            int freeSpace = PAGE_SIZE - (freeSpaceOffset + (numRecords * SLOT_SIZE) + META_INFO);
+
+            // if the free space isn't in range then the page isn't formated right
+            if (freeSpace < 0 || freeSpace > PAGE_SIZE) {
+                free(page);
+                return 0;
+            }
+            fileHandle.freeSpace.push_back(freeSpace); 
+        }
+        fileHandle.currentPage = page;
+    }
+    return 0;
 }
 
 RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {

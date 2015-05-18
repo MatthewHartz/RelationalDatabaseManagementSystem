@@ -36,6 +36,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
 
     // open file
     if (pfm->openFile(fileName, *handle) == -1) return -1;
+    ixFileHandle.setHandle(*handle);
 
     // append the root page if the file is empty
     if (handle->numPages == 0) {
@@ -48,12 +49,9 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
         if (handle->appendPage(data) == -1) {
             return -1;
         }
-
+        
         ixFileHandle.setRoot(data);
     }
-
-    ixFileHandle.setHandle(*handle);
-
     return 0;
 }
 
@@ -68,9 +66,46 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+    // extract root
+    void *child = ixfileHandle.getRoot();
+    void *parent = NULL;
+    int left, right;
+    
+    // Loop over traverse and save left and right pointers until leaf page
+    while(true) {
+        // if node == null then we need to create a leaf page
+        if (traverse(child, parent, key, attribute, ixfileHandle) == -1) return -1;
 
+        // if child is null (first entry into a non-leaf node) 
+        if(child == NULL) {
+            // insert director into node
+            child = malloc(PAGE_SIZE);
+            int pageNum = ixfileHandle.initializeNewNode(child, TypeLeaf);
+            insertDirector(parent, key, attribute, pageNum);
+            traverse(child, parent, key, attribute, ixfileHandle);
+        }
 
+        // test if leaf node
+        /*
+        if (getNodeType(child) == TypeLeaf) {
+            break;
+        }*/
+    }
+    if(!hasEnoughSpace(child, attribute)) {
+        // if not enough space we need to split
+        //splitChild();
+    }
+    
+    // Create the new page
+    void *node;
+    //initializeNewNode(node, TypeLeaf)
+    // Initialize the page with left and right pointers
 
+    // Insert recrd
+    
+    // Compact/shift for insert 
+   
+   
     return -1;
 }
 
@@ -107,6 +142,84 @@ bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
     return true;
 }
 
+RC IndexManager::traverse(void * &child, void * &parent, const void *key, const Attribute &attribute, IXFileHandle &ixfileHandle) {
+    // next if node is empty
+    parent = child;
+    child = NULL;
+    int offset = 0;
+
+    switch(attribute.type) {
+        case TypeInt:
+            while(true) {
+                // directorPage is the page on the right
+                int leftPage, rightPage, directorKey, cKey;
+                memcpy(&leftPage, (char *) parent + offset, sizeof(int));
+                offset += sizeof(int);
+                memcpy(&directorKey, (char *) parent + offset, sizeof(int));
+                offset += sizeof(int);
+                memcpy(&rightPage, (char *) parent + offset, sizeof(int));
+                
+                // test if director page is zero in order to break out
+                if (rightPage == 0) {
+                    return 0;
+                }
+                
+                // extract the key to compare to
+                memcpy(&cKey, (char *) key, sizeof(int));
+
+                // if this is true go left
+                if (cKey < directorKey) {
+                   return ixfileHandle.getHandle().readPage(leftPage, child);
+                }  
+            }
+            break;
+        case TypeReal:
+            return -1; 
+        case TypeVarChar:
+            // compare strings
+            return -1;
+            break;
+        default:
+            return -1;
+    }
+}
+
+
+RC IndexManager::insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum) {
+    // we added 4 bytes in consideration of the next pointer
+    int size = sizeof(int);
+
+    // create the director and save its length
+    switch(attribute.type) {
+        case TypeInt:
+            size += sizeof(int);
+            break;
+        case TypeReal:
+            size = sizeof(float);
+            break;
+        case TypeVarChar:
+            int length;
+            memcpy(&length, (char *) key, sizeof(int));
+            size = length + sizeof(int);
+            break;
+        default:
+            return -1;
+    } 
+     
+    
+    // scan through each key and determine where the new key will be placed
+    
+
+    // shift to the right for director length
+    
+
+    // insert the new director here 
+
+    // 
+}
+
+
+
 IX_ScanIterator::IX_ScanIterator()
 {
 }
@@ -136,7 +249,7 @@ IXFileHandle::~IXFileHandle()
 
 RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount)
 {
-    return -1;
+    return handle->collectCounterValues(readPageCount, writePageCount, appendPageCount);
 }
 
 int IXFileHandle::initializeNewNode(void *data, NodeType type) {
@@ -144,7 +257,7 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     memset(data, 0, PAGE_SIZE);
 
     // initializes the free space slot with the free space value
-    int freeSpace = PAGE_SIZE - 5;
+    int freeSpace = DEFAULT_FREE - sizeof(int);
     memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
 
     // sets the node type
@@ -165,7 +278,7 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
 
     // if the node type is not a leaf, initialize the first pointer
     if (type == TypeNode) {
-        int pointer = this->getAvailablePageNumber();
+        int pointer = this->getAvailablePageNumber() + 1;
         memcpy(data, &pointer, sizeof(int));
     }
 }
@@ -173,11 +286,13 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
 int IXFileHandle::getAvailablePageNumber() {
     // If there is a page open in freePages use one of those first to reduce File size
     if (this->freePages.size() != 0) {
-        return this->freePages[0];
+       int freePage = freePages.front();
+       freePages.erase(freePages.begin());
+       return freePage;
     }
 
     // else return numPages
-    return this->handle->numPages + 1;
+    return handle->numPages;
 }
 
 void IX_PrintError (RC rc)

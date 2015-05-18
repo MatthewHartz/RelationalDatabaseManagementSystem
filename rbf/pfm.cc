@@ -25,11 +25,11 @@ PagedFileManager::~PagedFileManager()
 RC PagedFileManager::createFile(const string &fileName)
 {
     // we must first test to see if the file already exists
-    ifstream test_file(fileName);
+    ifstream test_file(fileName.c_str());
     if (test_file.good()) {
         return -1;
     } else {
-        ofstream new_file(fileName, ios::binary);
+        ofstream new_file(fileName.c_str(), ios::binary);
         if (new_file.is_open()) {
             new_file.close();
             return 0;
@@ -60,48 +60,18 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
             return 0;
         }
         // link this new file handle to this opened file
-        fileHandle.outfile = new ofstream(fileName, ios::binary | ios::in | ios::out);
-        fileHandle.infile = new ifstream(fileName, ios::binary);
+        fileHandle.outfile = new ofstream(fileName.c_str(), ios::binary | ios::in | ios::out);
+        fileHandle.infile = new ifstream(fileName.c_str(), ios::binary);
 
-        // We need to scan the file and grab the free space available in a list
-        // and we need to set the currentPage number and currentPage if the file is not empty
         fileHandle.infile->seekg(0, ios::end);
         int length = fileHandle.infile->tellg();
-
-        // if the file is not empty then we need to scan it
-        if (length != 0) {
-            int numPages = fileHandle.numPages = length / PAGE_SIZE;
-            fileHandle.currentPageNum = fileHandle.numPages - 1;
-
-            void *page = malloc(PAGE_SIZE);
-            for (int i = 0; i < numPages; i++) {
-                // read the page and extract the free space
-                fileHandle.readPage(i, page);
-
-                // we need the number of records and freeSpaceOffset to calculate the freeSpace
-                int numRecords;
-                memcpy(&numRecords, (char *) page + N_OFFSET, sizeof(int));
-
-                int freeSpaceOffset;
-                memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
-
-                // Now we can derive the freeSpace
-                int freeSpace = PAGE_SIZE - (freeSpaceOffset + (numRecords * SLOT_SIZE) + META_INFO);
-
-                // if the free space isn't in range then the page isn't formated right
-                if (freeSpace < 0 || freeSpace > PAGE_SIZE) {
-                    free(page);
-                    return 0;
-                }
-                fileHandle.freeSpace.push_back(freeSpace); 
-            }
-            fileHandle.currentPage = page;
-        }            
+        fileHandle.numPages = length / PAGE_SIZE;
         return 0;
     } else {
         return -1;
     }
 }
+
 
 
 RC PagedFileManager::closeFile(FileHandle &fileHandle)
@@ -132,6 +102,7 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
     }
     return -1;
 }
+
 
 
 FileHandle::FileHandle()

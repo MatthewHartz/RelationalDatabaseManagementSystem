@@ -7,6 +7,7 @@ typedef unsigned PageNum;
 
 #define PAGE_SIZE 4096
 #include <iostream>
+#include <cstdlib>
 #include <string>
 #include <climits>
 #include <fstream>
@@ -42,6 +43,7 @@ public:
     RC destroyFile   (const string &fileName);                         // Destroy a file
     RC openFile      (const string &fileName, FileHandle &fileHandle); // Open a file
     RC closeFile     (FileHandle &fileHandle);                         // Close a file
+
 
 protected:
     PagedFileManager();                                   // Constructor
