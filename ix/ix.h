@@ -37,17 +37,17 @@ class IndexManager {
         RC openFile(const string &fileName, IXFileHandle &ixFileHandle);
 
         // Close a file handle for an index. 
-        RC closeFile(IXFileHandle &ixfileHandle);
+        RC closeFile(IXFileHandle &ixFileHandle);
 
         // Insert an entry into the given index that is indicated by the given ixfileHandle
         // www.sanfoundry.com/cpp-program-to-implement-b-tree
-        RC insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
+        RC insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid);
 
         // Delete an entry from the given index that is indicated by the given fileHandle
-        RC deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
+        RC deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid);
 
         // Initialize and IX_ScanIterator to supports a range search
-        RC scan(IXFileHandle &ixfileHandle,
+        RC scan(IXFileHandle &ixFileHandle,
                 const Attribute &attribute,
                 const void *lowKey,
                 const void *highKey,
@@ -56,13 +56,13 @@ class IndexManager {
                 IX_ScanIterator &ix_ScanIterator);
 
         // Print the B+ tree JSON record in pre-order
-        void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
+        void printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const;
 
         // Splits the child into two seperate nodes (odd will push left)
         void splitChild();
 
         // Traverses the tree
-        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixfileHandle);
+        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle);
 
         // Determines if the page has enough space
         bool hasEnoughSpace(void *data, const Attribute &attribute);
@@ -71,8 +71,10 @@ class IndexManager {
         NodeType getNodeType(void *node);
 
         // insert the Director Key <key, next pointer> into a non-leaf node
-        RC insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum);
+        RC insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum, IXFileHandle &ixFileHandle);
         
+        // returns a director triplet at a given offset
+        RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
     protected:
         IndexManager();
@@ -104,7 +106,11 @@ class IXFileHandle {
         FileHandle &getHandle() { return *this->handle; }
         void setHandle(FileHandle &h) { handle = &h; }
         void setRoot(void *data) { handle->currentPage = data; };
+        void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)) };
         void* getRoot() { return handle->currentPage; };
+        int getFreeSpace(void *data);
+        int getLeftPointer(void *data);
+        int getRightPointer(void *data);
         int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type
         int getAvailablePageNumber(); // This helper function will get the first available page
 
