@@ -78,7 +78,7 @@ class IndexManager {
         RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
         // Used to enter a Key into a leaf 
-        int insertionIntoLeafNode(void *child, const void *key, const Attribute &attribute, const RID &rid);
+        RC insertionIntoLeafNode(void *child, const void *key, const Attribute &attribute, const RID &rid);
 
         // This function will get the next key offset in a leaf node
         int getNextKeyOffset(int RIDnumOffset, void *node);

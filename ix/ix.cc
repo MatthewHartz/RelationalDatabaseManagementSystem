@@ -331,7 +331,6 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
     int newOffset = 0;
     int nextKeyOffset = 0;
-    int prevKeyOffset = 0;
     int newDataOffset = 0;
     int sizeOfNewData, sizeOfShiftedData;
     void *newData;
@@ -345,7 +344,7 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
             int leafKey;
 
             // we can calculate the size of the new data if the key is not equal to 
-            // any key in the leaf
+            // any key in the leaf [key, # of RIDs, rid]
             sizeOfNewData = (2 * sizeof(int)) + RID_SIZE;
             sizeOfShiftedData = 0;
 
@@ -360,9 +359,10 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
                 // if the incoming key is less than the leafKey then we need to 
                 // return the prevKey Offset
                 if (incomingKey < leafKey) {
-                    // get the size of a new [key, #number of rids, RID]
-                    sizeOfShiftedData = freeSpaceOffset - prevKeyOffset;
-                    newOffset = prevKeyOffset;
+                    // calculate the size of the shifting data and set the newOffset
+                    // to the previous 
+                    sizeOfShiftedData = freeSpaceOffset - nextKeyOffset;
+                    newOffset = nextKeyOffset;
                     
                     // lastly we need to build the new data that will be inserted
                     int firstRID = 1;
@@ -398,9 +398,8 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
                     memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
                     break;
                 }
-                // we need to track the previous offse and get the new offset
-                prevKeyOffset = nextKeyOffset;
-                nextKeyOffset = getNextKeyOffset(prevKeyOffset + sizeof(int), child);
+                // move to the next key
+                nextKeyOffset = getNextKeyOffset(nextKeyOffset + sizeof(int), child);
             }
             // if we have reached the end then we need to create the data for insertion
             // at the end of the leaf node
