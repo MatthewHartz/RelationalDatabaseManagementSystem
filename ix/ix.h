@@ -13,6 +13,7 @@ const int NODE_FREE = PAGE_SIZE - sizeof(int);
 const int NODE_TYPE = PAGE_SIZE - ((sizeof(int) * 3) + sizeof(byte));
 const int NODE_RIGHT = PAGE_SIZE - ((sizeof(int) * 2));
 const int NODE_LEFT = PAGE_SIZE - ((sizeof(int) * 3));
+const int RID_SIZE = 2 * sizeof(int);
 
 const int DEFAULT_FREE = PAGE_SIZE - 13;
 
@@ -76,6 +77,12 @@ class IndexManager {
         // returns a director triplet at a given offset
         RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
+        // Used to enter a Key into a leaf 
+        int findInsertionIntoLeafNodeOffset(void *child, const void *key, const Attribute &attribute);
+
+        // This function will get the next key offset in a leaf node
+        int getNextKeyOffset(int RIDnumOffset, void *node);
+
     protected:
         IndexManager();
         ~IndexManager();
@@ -108,13 +115,16 @@ class IXFileHandle {
         void setRoot(void *data) { handle->currentPage = data; };
         void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
         void* getRoot() { return handle->currentPage; };
-        int getFreeSpace(void *data);
         int getLeftPointer(void *node);
         int getRightPointer(void *node);
         void setLeftPointer(void *node, int leftPageNum);
         void setRightPointer(void *node, int rightPageNum);
         int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type
         int getAvailablePageNumber(); // This helper function will get the first available page
+
+        // static functions that don't require an instance of ixFileHandler
+        static int getFreeSpace(void *data);
+        static int getFreeSpaceOffset(int freeSpace) { return (DEFAULT_FREE - freeSpace); };
 
     private:
         FileHandle *handle;

@@ -97,22 +97,25 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             ixFileHandle.getHandle().writePage(pageNum, child);
             ixFileHandle.getHandle().writePage(0, parent);
         }
-
+                
         // test if leaf node
         if (getNodeType(child) == TypeLeaf) {
+            // do we maybe need to  check for enough space here? and then split?
             break;
         }
     }
+       
 
     // If the node does not have enough space, we need to split the node
     if(!hasEnoughSpace(child, attribute)) {
         // if not enough space we need to split
         //splitChild();
     }
-    
-    // Create the new page
-    void *node;
-    //initializeNewNode(node, TypeLeaf)
+
+    // Here we are guaranteed to have a leaf node in child and we need to find the offset
+    // where it will be placed
+    int offset = findInsertionIntoLeafNodeOffset(child, key, attribute);
+     
     // Initialize the page with left and right pointers
     
     // Insert record
@@ -276,6 +279,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // update Freespace
     freeSpace -= size;
     ixFileHandle.setFreeSpace(node, freeSpace);
+    return 0;
 }
 
 NodeType IndexManager::getNodeType(void *node) {
@@ -325,6 +329,64 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
     return 0;
 }
 
+int IndexManager::findInsertionIntoLeafNodeOffset(void *child, const void *key
+                                                             , const Attribute &attribute) {
+    // calculate the freeSpaceOffset
+    int freeSpace = IXFileHandle::getFreeSpace(child);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int nextKeyOffset = 0;
+    int prevKeyOffset = 0;
+    void *leafKey;
+    void *incomingKey;
+
+    // first we need to determine what type of attribute we have
+    switch(attribute.type) {
+        case TypeInt:
+            // extract the keys that will be compared
+            memcpy(&incomingKey, (char *) key, sizeof(int));
+
+            // loop throught he keys until we have reached the end
+            while (nextKeyOffset < freeSpaceOffset) {
+                // lets first extract the key and compare
+                memcpy(&leafKey, (char * ) child + nextKeyOffset, sizeof(int));
+                
+                // if the incoming key is less than the leafKey then we need to 
+                // return the prevKey Offset
+                if (incomingKey < leafKey) {
+                    return prevKeyOffset;
+                }
+                // if the incoming key and the leafkey are the same then we return 
+                // the next Key offset
+                if (incomingKey == leafKey) {
+                    return nextKeyOffset;
+                }
+                // we need to track the previous offse and get the new offset
+                prevKeyOffset = nextKeyOffset;
+                nextKeyOffset = getNextKeyOffset(prevKeyOffset + sizeof(int), child);
+            }
+              
+            return 0;
+        case TypeReal:
+            // do work for a float
+            return 0;
+        case TypeVarChar:
+            // do work for a varChar
+            return 0;
+        default:
+            // shit is borked!
+            return -1;
+    }
+}
+
+// this function takes the the offset of a key entry plus the key size, so 
+// that we are placed at the # of RID's slot
+int IndexManager::getNextKeyOffset(int RIDnumOffset, void *node) {
+    // we need to extract the number RID's that exist in the node
+    int numberOfRIDs;
+    memcpy(&numberOfRIDs, (char *) node + RIDnumOffset, sizeof(int));
+    return numberOfRIDs * RID_SIZE;
+}
+                                                             
 
 void IXFileHandle::setLeftPointer(void *node, int leftPageNum) {
     memcpy((char *) node + NODE_LEFT, &leftPageNum, sizeof(int));    
@@ -395,6 +457,8 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
         int pointer = this->getAvailablePageNumber() + 1;
         memcpy(data, &pointer, sizeof(int));
     }
+    // what does this need to return?
+    return 0;
 }
 
 int IXFileHandle::getFreeSpace(void *data) {
