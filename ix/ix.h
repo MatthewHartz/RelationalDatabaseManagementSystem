@@ -63,7 +63,7 @@ class IndexManager {
         void splitChild();
 
         // Traverses the tree
-        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle, int leftPageNum);
+        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle, int &leftPageNum);
 
         // Determines if the page has enough space
         bool hasEnoughSpace(void *data, const Attribute &attribute);
@@ -78,10 +78,13 @@ class IndexManager {
         RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
         // Used to enter a Key into a leaf 
-        int findInsertionIntoLeafNodeOffset(void *child, const void *key, const Attribute &attribute);
+        int insertionIntoLeafNode(void *child, const void *key, const Attribute &attribute, const RID &rid);
 
         // This function will get the next key offset in a leaf node
         int getNextKeyOffset(int RIDnumOffset, void *node);
+
+        // Funciton to get the number of RIDs in a <key, pair> entry
+        int getNumberOfRids(void *node, int RIDnumOffset);
 
     protected:
         IndexManager();

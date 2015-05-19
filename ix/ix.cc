@@ -69,33 +69,28 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // extract root
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
+    int childPageNum, ParentPageNum;
     int leftPageNum;
     
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
         // if node == null then we need to create a leaf page
-        if (traverse(child, parent, key, attribute, ixFileHandle, leftPageNum) == -1) return -1;
+        if (traverse(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) { 
+            return -1;
+        }
 
         // if child is null (first entry into a non-leaf node) 
         if(child == NULL) {
             // insert director into node
             child = malloc(PAGE_SIZE);
-            int pageNum = ixFileHandle.initializeNewNode(child, TypeLeaf);
+            childPageNum = ixFileHandle.initializeNewNode(child, TypeLeaf);
 
             // We should not need to test for enough space,
             // otherwise we have a larger issue at hand
-            insertDirector(parent, key, attribute, pageNum, ixFileHandle);
+            insertDirector(parent, key, attribute, childPageNum, ixFileHandle);
 
-            // Link children together
-            ixFileHandle.setLeftPointer(child, leftPageNum);  
-            void *leftChild = malloc(PAGE_SIZE);
-            ixFileHandle.getHandle().readPage(leftPageNum, leftChild);
-            ixFileHandle.setRightPointer(leftChild, pageNum);
-
-            // we need to write all nodes to file (Parent, leftChild and rightChild);
-            ixFileHandle.getHandle().writePage(leftPageNum, leftChild);
-            ixFileHandle.getHandle().writePage(pageNum, child);
-            ixFileHandle.getHandle().writePage(0, parent);
+            // Link sibling nodes together if needed
+            
         }
                 
         // test if leaf node
@@ -112,17 +107,16 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         //splitChild();
     }
 
-    // Here we are guaranteed to have a leaf node in child and we need to find the offset
-    // where it will be placed
-    int offset = findInsertionIntoLeafNodeOffset(child, key, attribute);
+    // Here we are guaranteed to have a leaf node in child and we can safely insert 
+    // the new data into the leaf node;
+    if (insertionIntoLeafNode(child, key, attribute, rid) == -1) {
+        return -1;
+    }
      
-    // Initialize the page with left and right pointers
-    
-    // Insert record
-    
-    // Compact/shift for insert 
-   
-   
+    // write the node to file
+    if(ixFileHandle.getHandle().writePage(childPageNum, child) == -1) {
+        return -1;
+    }
     return 0;
 }
 
@@ -163,7 +157,7 @@ RC IndexManager::traverse(void * &child, void * &parent
                                        , const void *key
                                        , const Attribute &attribute
                                        , IXFileHandle &ixfileHandle
-                                       , int leftPageNum) {
+                                       , int &leftPageNum) {
     // next if node is empty
     parent = child;
     child = NULL;
@@ -180,7 +174,7 @@ RC IndexManager::traverse(void * &child, void * &parent
                 memcpy(&directorKey, (char *) parent + offset, sizeof(int));
                 offset += sizeof(int);
                 memcpy(&rightPage, (char *) parent + offset, sizeof(int));
-                leftPageNum = offset;
+                leftPageNum = leftPage;
                 
                 // test if director page is zero AND its the first entry in a non-leaf node
                 if (rightPage == 0 && counter == 0) {
@@ -329,19 +323,32 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
     return 0;
 }
 
-int IndexManager::findInsertionIntoLeafNodeOffset(void *child, const void *key
-                                                             , const Attribute &attribute) {
+int IndexManager::insertionIntoLeafNode(void *child, const void *key
+                                                   , const Attribute &attribute
+                                                   , const RID &rid) {
     // calculate the freeSpaceOffset
     int freeSpace = IXFileHandle::getFreeSpace(child);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int newOffset = 0;
     int nextKeyOffset = 0;
     int prevKeyOffset = 0;
-    void *leafKey;
-    void *incomingKey;
+    int newDataOffset = 0;
+    int sizeOfNewData, sizeOfShiftedData;
+    void *newData;
+    void *shiftedData;
 
     // first we need to determine what type of attribute we have
     switch(attribute.type) {
         case TypeInt:
+            // local variale used only by TypeInt
+            int incomingKey;
+            int leafKey;
+
+            // we can calculate the size of the new data if the key is not equal to 
+            // any key in the leaf
+            sizeOfNewData = (2 * sizeof(int)) + RID_SIZE;
+            sizeOfShiftedData = 0;
+
             // extract the keys that will be compared
             memcpy(&incomingKey, (char *) key, sizeof(int));
 
@@ -353,18 +360,77 @@ int IndexManager::findInsertionIntoLeafNodeOffset(void *child, const void *key
                 // if the incoming key is less than the leafKey then we need to 
                 // return the prevKey Offset
                 if (incomingKey < leafKey) {
-                    return prevKeyOffset;
+                    // get the size of a new [key, #number of rids, RID]
+                    sizeOfShiftedData = freeSpaceOffset - prevKeyOffset;
+                    newOffset = prevKeyOffset;
+                    
+                    // lastly we need to build the new data that will be inserted
+                    int firstRID = 1;
+                    newData = malloc((2 * sizeof(int)) + RID_SIZE);
+                    memcpy((char *) newData + newDataOffset, &incomingKey, sizeof(int));
+                    newDataOffset += sizeof(int);
+                    memcpy((char *) newData + newDataOffset, &firstRID, sizeof(int)); 
+                    newDataOffset += sizeof(int);
+                    memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int)); 
+                    newOffset += sizeof(int);
+                    memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+                    break; 
                 }
-                // if the incoming key and the leafkey are the same then we return 
-                // the next Key offset
+                // if the incoming key and the leafkey are the same then we just
+                // append the rid the list
                 if (incomingKey == leafKey) {
-                    return nextKeyOffset;
+                    // here we must insert a new RID into the list
+                    sizeOfNewData = RID_SIZE;
+
+                    // get the offset of the last RID in the list
+                    int numberOfRIDs = getNumberOfRids(child, nextKeyOffset + sizeof(int));
+
+                    // get the offset of the last RID in the list
+                    newOffset = nextKeyOffset + (2 * sizeof(int)) + (numberOfRIDs * RID_SIZE);
+
+                    // calculate the data that will be shifted to the right
+                    sizeOfShiftedData = freeSpaceOffset - newOffset;
+
+                    // create the new data which is only an rid
+                    newData = malloc(RID_SIZE);
+                    memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int));
+                    newDataOffset += sizeof(int);
+                    memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+                    break;
                 }
                 // we need to track the previous offse and get the new offset
                 prevKeyOffset = nextKeyOffset;
                 nextKeyOffset = getNextKeyOffset(prevKeyOffset + sizeof(int), child);
             }
-              
+            // if we have reached the end then we need to create the data for insertion
+            // at the end of the leaf node
+            if (nextKeyOffset == freeSpaceOffset) {
+                // just insert at the end
+                newOffset = freeSpaceOffset; 
+                
+                // lastly we need to build the new data that will be inserted
+                int firstRID = 1;
+                newData = malloc((2 * sizeof(int)) + RID_SIZE);
+                memcpy((char *) newData + newDataOffset, &incomingKey, sizeof(int));
+                newDataOffset += sizeof(int);
+                memcpy((char *) newData + newDataOffset, &firstRID, sizeof(int)); 
+                newDataOffset += sizeof(int);
+                memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int)); 
+                newOffset += sizeof(int);
+                memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+            } 
+
+            // we need to shift the data to the right and insert the new data
+            shiftedData = malloc(sizeOfShiftedData);
+            memcpy((char *) shiftedData, (char *) child + newOffset, sizeOfShiftedData);
+
+            // shift to the right
+            memcpy((char *) child + newOffset + sizeOfNewData, (char *) shiftedData, sizeOfShiftedData);
+
+            // enter new data
+            memcpy((char *) child + newOffset, (char *) newData, sizeOfNewData);
+            
+            // TODO: update total number of RID's
             return 0;
         case TypeReal:
             // do work for a float
@@ -378,13 +444,17 @@ int IndexManager::findInsertionIntoLeafNodeOffset(void *child, const void *key
     }
 }
 
+int IndexManager::getNumberOfRids(void *node, int RIDnumOffset) {
+    int numberOfRIDs;
+    memcpy(&numberOfRIDs, (char *) node + RIDnumOffset, sizeof(int));
+    return numberOfRIDs;
+}
+
 // this function takes the the offset of a key entry plus the key size, so 
 // that we are placed at the # of RID's slot
 int IndexManager::getNextKeyOffset(int RIDnumOffset, void *node) {
     // we need to extract the number RID's that exist in the node
-    int numberOfRIDs;
-    memcpy(&numberOfRIDs, (char *) node + RIDnumOffset, sizeof(int));
-    return numberOfRIDs * RID_SIZE;
+    return getNumberOfRids(node, RIDnumOffset) * RID_SIZE;
 }
                                                              
 
