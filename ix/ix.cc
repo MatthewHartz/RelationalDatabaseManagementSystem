@@ -71,13 +71,18 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // extract root
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
-    int childPageNum, ParentPageNum;
-    int leftPageNum;
+    int childPageNum;
     
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
+        // Test if node is full (This is what makes top-down, top-down
+        if(!hasEnoughSpace(child, attribute)) {
+            // if not enough space we need to split
+            //splitChild();
+        }
+
         // if node == null then we need to create a leaf page
-        if (traverse(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) { 
+        if (traverse(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
             return -1;
         }
 
@@ -126,7 +131,6 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
     }
        
-
     // If the node does not have enough space, we need to split the node
     if(!hasEnoughSpace(child, attribute)) {
         // if not enough space we need to split
@@ -135,7 +139,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
     // Here we are guaranteed to have a leaf node in child and we can safely insert 
     // the new data into the leaf node;
-    if (insertionIntoLeafNode(child, key, attribute, rid) == -1) {
+    if (insertIntoLeaf(child, key, attribute, rid) == -1) {
         return -1;
     }
      
@@ -146,11 +150,50 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     return 0;
 }
 
-RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
+RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    return -1;
-}
+    // extract root
+    void *child = ixFileHandle.getRoot();
+    void *parent = NULL;
+    int childPageNum;
 
+    // Loop over traverse and save left and right pointers until leaf page
+    while(true) {
+        // Test if node is full (This is what makes top-down, top-down
+        // TODO NOT SURE IF WE WANT THIS
+        if(!hasEnoughSpace(child, attribute)) {
+            // if not enough space we need to split
+            //splitChild();
+        }
+
+        // if node == null then we need to create a leaf page
+        if (traverse(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
+            return -1;
+        }
+
+        // if child is null (first entry into the root node, SHOULD NEVER HAPPEN OTHERWISE)
+        if(child == NULL) {
+            return -1;
+        }
+
+        // test if leaf node
+        if (ixFileHandle.getNodeType(child) == TypeLeaf) {
+            // do we maybe need to  check for enough space here? and then split?
+            break;
+        }
+    }
+
+    // TODO NOT SURE IF THIS IS NEEDED
+    if(!hasEnoughSpace(child, attribute)) {
+        // if not enough space we need to split
+        //splitChild();
+    }
+
+    // Remove node from leaf
+    deleteFromLeaf(child, key, attribute, rid);
+
+    return 0;
+}
 
 RC IndexManager::scan(IXFileHandle &ixfileHandle,
         const Attribute &attribute,
@@ -175,6 +218,16 @@ bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
 
     int freeSpace;
     memcpy(&freeSpace, (char*)data + NODE_FREE, sizeof(int));
+
+    switch(type) {
+        case TypeRoot:
+        case TypeNode:
+            break;
+        case TypeLeaf:
+            break;
+        default:
+            return false;
+    }
 
     return true;
 }
@@ -220,13 +273,12 @@ RC IndexManager::traverse(void * &child, void * &parent
                 counter++;
             }
             
-            break;
+            return 0;
         case TypeReal:
             return -1; 
         case TypeVarChar:
             // compare strings
             return -1;
-            break;
         default:
             return -1;
     }
@@ -344,7 +396,7 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
     return 0;
 }
 
-int IndexManager::insertionIntoLeafNode(void *child, const void *key
+RC IndexManager::insertIntoLeaf(void *child, const void *key
                                                    , const Attribute &attribute
                                                    , const RID &rid) {
     // calculate the freeSpaceOffset
@@ -386,15 +438,8 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
                     newOffset = nextKeyOffset;
                     
                     // lastly we need to build the new data that will be inserted
-                    int firstRID = 1;
-                    newData = malloc((2 * sizeof(int)) + RID_SIZE);
-                    memcpy((char *) newData + newDataOffset, &incomingKey, sizeof(int));
-                    newDataOffset += sizeof(int);
-                    memcpy((char *) newData + newDataOffset, &firstRID, sizeof(int)); 
-                    newDataOffset += sizeof(int);
-                    memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int)); 
-                    newOffset += sizeof(int);
-                    memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+                    newData = malloc((2 *sizeof(int)) + RID_SIZE);
+                    createNewLeafEntry(newData, key, attribute, rid);
                     break; 
                 }
                 // if the incoming key and the leafkey are the same then we just
@@ -408,6 +453,10 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
 
                     // get the offset of the last RID in the list
                     newOffset = nextKeyOffset + (2 * sizeof(int)) + (numberOfRIDs * RID_SIZE);
+
+                    // update the number of RIDs in key
+                    numberOfRIDs += 1;
+                    memcpy((char*)child + (nextKeyOffset + sizeof(int)), &numberOfRIDs, sizeof(int));
 
                     // calculate the data that will be shifted to the right
                     sizeOfShiftedData = freeSpaceOffset - newOffset;
@@ -429,15 +478,8 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
                 newOffset = freeSpaceOffset; 
                 
                 // lastly we need to build the new data that will be inserted
-                int firstRID = 1;
-                newData = malloc((2 * sizeof(int)) + RID_SIZE);
-                memcpy((char *) newData + newDataOffset, &incomingKey, sizeof(int));
-                newDataOffset += sizeof(int);
-                memcpy((char *) newData + newDataOffset, &firstRID, sizeof(int)); 
-                newDataOffset += sizeof(int);
-                memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int)); 
-                newOffset += sizeof(int);
-                memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+                newData = malloc((2 *sizeof(int)) + RID_SIZE);
+                createNewLeafEntry(newData, key, attribute, rid);
             } 
 
             // we need to shift the data to the right and insert the new data
@@ -449,8 +491,6 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
 
             // enter new data
             memcpy((char *) child + newOffset, (char *) newData, sizeOfNewData);
-            
-            // TODO: update total number of RID's
             return 0;
         case TypeReal:
             // do work for a float
@@ -464,10 +504,109 @@ int IndexManager::insertionIntoLeafNode(void *child, const void *key
     }
 }
 
+RC IndexManager::deleteFromLeaf(void *child, const void *key
+                                            , const Attribute &attribute
+                                            , const RID &rid) {
+    // calculate the freeSpaceOffset
+    int freeSpace = IXFileHandle::getFreeSpace(child);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int nextKeyOffset = 0;
+
+    // Save the number of bits for key length (this will be used to read in length size
+    int keyLengthSize;
+    switch (attribute.type) {
+        case TypeInt:
+        case TypeReal:
+            keyLengthSize = 0;
+            break;
+        case TypeVarChar:
+            keyLengthSize = 4;
+            break;
+        default:
+            return -1;
+    }
+
+    // Iterate over keys
+    int keyLength;
+    void *comparisonKey;
+    while (nextKeyOffset < freeSpaceOffset) {
+        memcpy(&keyLength, (char*)child + nextKeyOffset, keyLengthSize);
+
+        // Tease out the key from the node
+        int keySize;
+        if (keyLengthSize != 0) {
+            keySize = sizeof(int) + keyLength;
+            memcpy(comparisonKey, (char*)child + nextKeyOffset, keySize);
+        } else {
+            keySize = sizeof(int);
+            memcpy(comparisonKey, (char*)child + nextKeyOffset, keySize);
+        }
+
+        nextKeyOffset += keySize;
+
+        int comparisonResult = compareKeys(key, comparisonKey, attribute);
+
+        // found the key, now remove either the whole key, or just an RID
+        if (comparisonResult == 0) {
+            // get RID count offset
+
+
+            // get the RID count
+
+
+            // Determine if > 1
+
+
+            // if > 1, remove 1 RID else remove the whole key
+        }
+
+    }
+
+    return 0;
+}
+
+int IndexManager::compareKeys(const void *key1, const void *key2, const Attribute attribute) {
+    int result = 0;
+
+    switch (attribute.type) {
+        case TypeInt:
+        case TypeReal:
+            break;
+        case TypeVarChar:
+            break;
+        default:
+            return -1;
+    }
+
+    return -1;
+}
+
 int IndexManager::getNumberOfRids(void *node, int RIDnumOffset) {
     int numberOfRIDs;
     memcpy(&numberOfRIDs, (char *) node + RIDnumOffset, sizeof(int));
     return numberOfRIDs;
+}
+
+void IndexManager::createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid) {
+    int numRids = 1;
+    int offset = 0;
+
+    switch (attribute.type) {
+        case TypeInt:
+        case TypeReal:
+            memcpy((char *) data + offset, key, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char *) data + offset, &numRids, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char *) data + offset, &rid.pageNum, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char *) data + offset, &rid.slotNum, sizeof(int));
+            break;
+        case TypeVarChar:
+            break;
+        default:
+            break;
+    }
 }
 
 // this function takes the the offset of a key entry plus the key size, so 
@@ -546,7 +685,7 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     memset(data, 0, PAGE_SIZE);
 
     // initializes the free space slot with the free space value
-    int freeSpace = DEFAULT_FREE - sizeof(int);
+    int freeSpace = DEFAULT_FREE;
     memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
 
     // sets the node type

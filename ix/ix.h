@@ -74,16 +74,25 @@ class IndexManager {
         RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
         // Used to enter a Key into a leaf 
-        RC insertionIntoLeafNode(void *child, const void *key, const Attribute &attribute, const RID &rid);
+        RC insertIntoLeaf(void *child, const void *key, const Attribute &attribute, const RID &rid);
+
+        // Used to remove a key from a leaf
+        RC deleteFromLeaf(void *child, const void *key, const Attribute &attribute, const RID &rid);
+
+        // Compares the keys and returns -1 if key1 < key2, 0 if key1 == key2, 1 if key1 > key2
+        int compareKeys(const void *key1, const void *key2, const Attribute attribute);
 
         // This function will get the next key offset in a leaf node
         int getNextKeyOffset(int RIDnumOffset, void *node);
 
-        // Funciton to get the number of RIDs in a <key, pair> entry
+        // Function to get the number of RIDs in a <key, pair> entry
         int getNumberOfRids(void *node, int RIDnumOffset);
 
         // Gets the length of a key
         int getKeyLength(const void *key, Attribute attr);
+
+        // Creates an initial key on the insert of a leaf node
+        void createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid);
 
     protected:
         IndexManager();
