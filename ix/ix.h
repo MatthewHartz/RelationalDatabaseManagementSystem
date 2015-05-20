@@ -10,15 +10,14 @@
 
 // Constants
 const int NODE_FREE = PAGE_SIZE - sizeof(int);
-const int NODE_TYPE = PAGE_SIZE - ((sizeof(int) * 3) + sizeof(byte));
+const int NODE_TYPE = PAGE_SIZE - ((sizeof(int) * 2) + sizeof(byte));
 const int NODE_RIGHT = PAGE_SIZE - ((sizeof(int) * 2));
-const int NODE_LEFT = PAGE_SIZE - ((sizeof(int) * 3));
 const int RID_SIZE = 2 * sizeof(int);
 
-const int DEFAULT_FREE = PAGE_SIZE - 13;
+const int DEFAULT_FREE = PAGE_SIZE - 9;
 
 // Nodes
-typedef enum { TypeNode = 0, TypeLeaf } NodeType;
+typedef enum { TypeNode = 0, TypeLeaf, TypeRoot } NodeType;
 
 class IX_ScanIterator;
 class IXFileHandle;
@@ -68,9 +67,6 @@ class IndexManager {
         // Determines if the page has enough space
         bool hasEnoughSpace(void *data, const Attribute &attribute);
 
-        // returns the type of node 
-        NodeType getNodeType(void *node);
-
         // insert the Director Key <key, next pointer> into a non-leaf node
         RC insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum, IXFileHandle &ixFileHandle);
         
@@ -85,6 +81,9 @@ class IndexManager {
 
         // Funciton to get the number of RIDs in a <key, pair> entry
         int getNumberOfRids(void *node, int RIDnumOffset);
+
+        // Gets the length of a key
+        int getKeyLength(const void *key, Attribute attr);
 
     protected:
         IndexManager();
@@ -117,10 +116,10 @@ class IXFileHandle {
         void setHandle(FileHandle &h) { handle = &h; }
         void setRoot(void *data) { handle->currentPage = data; };
         void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
+        void setNodeType(void *node, NodeType type);
         void* getRoot() { return handle->currentPage; };
-        int getLeftPointer(void *node);
         int getRightPointer(void *node);
-        void setLeftPointer(void *node, int leftPageNum);
+        NodeType getNodeType(void *node);
         void setRightPointer(void *node, int rightPageNum);
         int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type
         int getAvailablePageNumber(); // This helper function will get the first available page

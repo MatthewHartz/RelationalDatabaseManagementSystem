@@ -42,7 +42,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
     if (handle->numPages == 0) {
         // Initialize the root page
         void *data = malloc(PAGE_SIZE);
-        if (ixFileHandle.initializeNewNode(data, TypeNode) == -1) {
+        if (ixFileHandle.initializeNewNode(data, TypeRoot) == -1) {
             return -1;
         }
 
@@ -79,22 +79,45 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             return -1;
         }
 
-        // if child is null (first entry into a non-leaf node) 
+        // if child is null (first entry into the root node, SHOULD NEVER HAPPEN OTHERWISE)
         if(child == NULL) {
-            // insert director into node
-            child = malloc(PAGE_SIZE);
-            childPageNum = ixFileHandle.initializeNewNode(child, TypeLeaf);
+            void *leftPointerData = malloc(PAGE_SIZE);
+            void *rightPointerData = malloc(PAGE_SIZE);
 
-            // We should not need to test for enough space,
-            // otherwise we have a larger issue at hand
-            insertDirector(parent, key, attribute, childPageNum, ixFileHandle);
+            // Initialize Left Pointer
+            int leftPointerNum = ixFileHandle.getAvailablePageNumber();
+            ixFileHandle.initializeNewNode(leftPointerData, TypeLeaf);
+            ixFileHandle.getHandle().appendPage(leftPointerData);
 
-            // Link sibling nodes together if needed
-            
+            // Initialize Right Pointer
+            int rightPointerNum = ixFileHandle.getAvailablePageNumber();
+            ixFileHandle.initializeNewNode(rightPointerData, TypeLeaf);
+            ixFileHandle.getHandle().appendPage(rightPointerData);
+
+            // Link left pointer to right pointer
+            ixFileHandle.setRightPointer(leftPointerData, rightPointerNum);
+
+            // Link left page to data (I realize this is an additional (write/append, but it will only happen 1, ever, so who cares ahha)
+            ixFileHandle.getHandle().writePage(leftPointerNum, leftPointerData);
+
+            // Write left, key, right data to the parent page
+            int offSet = 0;
+            int keyLength = getKeyLength(key, attribute);
+            memcpy((char*) parent + offSet, &leftPointerNum, sizeof(int));
+            offSet += sizeof(int);
+            memcpy((char*) parent + offSet, key, keyLength);
+            offSet += keyLength;
+            memcpy((char*) parent + offSet, &rightPointerNum, sizeof(int));
+
+            // Write page to memory (GOING TO ASSUME ROOT)
+            ixFileHandle.setRoot(parent);
+
+            // Re-run insert Entry with the newly added root key and pages
+            return insertEntry(ixFileHandle, attribute, key, rid);
         }
                 
         // test if leaf node
-        if (getNodeType(child) == TypeLeaf) {
+        if (ixFileHandle.getNodeType(child) == TypeLeaf) {
             // do we maybe need to  check for enough space here? and then split?
             break;
         }
@@ -166,9 +189,13 @@ RC IndexManager::traverse(void * &child, void * &parent
 
     switch(attribute.type) {
         case TypeInt:
+            // extract the key to compare to
+            int cKey;
+            memcpy(&cKey, (char *) key, sizeof(int));
+
             while(true) {
                 // directorPage is the page on the right
-                int leftPage, rightPage, directorKey, cKey;
+                int leftPage, rightPage, directorKey;
                 memcpy(&leftPage, (char *) parent + offset, sizeof(int));
                 offset += sizeof(int);
                 memcpy(&directorKey, (char *) parent + offset, sizeof(int));
@@ -180,13 +207,12 @@ RC IndexManager::traverse(void * &child, void * &parent
                 if (rightPage == 0 && counter == 0) {
                     return 0;
                 }
-                
-                // extract the key to compare to
-                memcpy(&cKey, (char *) key, sizeof(int));
 
                 // if this is true go left
                 if (cKey < directorKey || rightPage == 0) {
-                   return ixfileHandle.getHandle().readPage(leftPage, child);
+                    child = malloc(PAGE_SIZE);
+                    ixfileHandle.getHandle().readPage(leftPage, child);
+                    return 0;
                 } 
                 counter++;
             }
@@ -202,7 +228,6 @@ RC IndexManager::traverse(void * &child, void * &parent
             return -1;
     }
 }
-
 
 RC IndexManager::insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum, IXFileHandle &ixFileHandle) {
     void *director;
@@ -274,13 +299,6 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     freeSpace -= size;
     ixFileHandle.setFreeSpace(node, freeSpace);
     return 0;
-}
-
-NodeType IndexManager::getNodeType(void *node) {
-    NodeType type;
-    memcpy(&type, (char *) node + NODE_TYPE, sizeof(byte));
-
-    return type;
 }
 
 RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute) {
@@ -455,14 +473,37 @@ int IndexManager::getNextKeyOffset(int RIDnumOffset, void *node) {
     // we need to extract the number RID's that exist in the node
     return getNumberOfRids(node, RIDnumOffset) * RID_SIZE;
 }
-                                                             
 
-void IXFileHandle::setLeftPointer(void *node, int leftPageNum) {
-    memcpy((char *) node + NODE_LEFT, &leftPageNum, sizeof(int));    
+int IndexManager::getKeyLength(const void *key, Attribute attr) {
+    int length;
+
+    switch(attr.type) {
+        case TypeInt:
+            length = sizeof(int);
+            break;
+        case TypeReal:
+            length = sizeof(int);
+            break;
+        case TypeVarChar:
+            memcpy(&length, (char*) key, sizeof(int));
+            length += 4;
+            break;
+        default:
+            return -1;
+    }
+
+    return length;
 }
 
 void IXFileHandle::setRightPointer(void *node, int rightPageNum) {
     memcpy((char *) node + NODE_RIGHT, &rightPageNum, sizeof(int));    
+}
+
+NodeType IXFileHandle::getNodeType(void *node) {
+    NodeType type;
+    memcpy(&type, (char *) node + NODE_TYPE, sizeof(byte));
+
+    return type;
 }
 
 IX_ScanIterator::IX_ScanIterator()
@@ -506,13 +547,16 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
 
     // sets the node type
-    int nodeType;
+    byte nodeType;
     switch (type) {
         case TypeNode:
             nodeType = 0;
             break;
         case TypeLeaf:
             nodeType = 1;
+            break;
+        case TypeRoot:
+            nodeType = 2;
             break;
         default:
             return -1;
@@ -522,10 +566,10 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     memcpy((char*)data + NODE_TYPE, &nodeType, sizeof(byte));
 
     // if the node type is not a leaf, initialize the first pointer
-    if (type == TypeNode) {
-        int pointer = this->getAvailablePageNumber() + 1;
-        memcpy(data, &pointer, sizeof(int));
-    }
+//    if (type == TypeNode) {
+//        int pointer = this->getAvailablePageNumber() + 1;
+//        memcpy(data, &pointer, sizeof(int));
+//    }
     // what does this need to return?
     return 0;
 }
@@ -535,13 +579,6 @@ int IXFileHandle::getFreeSpace(void *data) {
     memcpy(&freeSpace, (char*)data + NODE_FREE, sizeof(int));
 
     return freeSpace;
-}
-
-int IXFileHandle::getLeftPointer(void *data) {
-    int left;
-    memcpy(&left, (char*)data + NODE_LEFT, sizeof(int));
-
-    return left;
 }
 
 int IXFileHandle::getRightPointer(void *data) {
