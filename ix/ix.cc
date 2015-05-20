@@ -33,7 +33,7 @@ RC IndexManager::destroyFile(const string &fileName)
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
 {
     FileHandle* handle = new FileHandle;
-
+    void *data = malloc(PAGE_SIZE);
     // open file
     if (pfm->openFile(fileName, *handle) == -1) return -1;
     ixFileHandle.setHandle(*handle);
@@ -41,7 +41,6 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
     // append the root page if the file is empty
     if (handle->numPages == 0) {
         // Initialize the root page
-        void *data = malloc(PAGE_SIZE);
         if (ixFileHandle.initializeNewNode(data, TypeRoot) == -1) {
             return -1;
         }
@@ -49,10 +48,12 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
         if (handle->appendPage(data) == -1) {
             return -1;
         }
-        
-        ixFileHandle.setRoot(data);
-        ixFileHandle.getHandle().currentPageNum = 0;
+    } else {
+        ixFileHandle.getHandle().readPage(0, data);
     }
+
+    ixFileHandle.setRoot(data);
+    ixFileHandle.getHandle().currentPageNum = 0; // Fix to compensate for close/open file
     return 0;
 }
 
