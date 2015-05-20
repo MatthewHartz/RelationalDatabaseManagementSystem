@@ -51,6 +51,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
         }
         
         ixFileHandle.setRoot(data);
+        ixFileHandle.getHandle().currentPageNum = 0;
     }
     return 0;
 }
@@ -88,6 +89,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             int leftPointerNum = ixFileHandle.getAvailablePageNumber();
             ixFileHandle.initializeNewNode(leftPointerData, TypeLeaf);
             ixFileHandle.getHandle().appendPage(leftPointerData);
+            ixFileHandle.getHandle().readPage(leftPointerNum, leftPointerData);  // REMOVE THIS IF WORKS
 
             // Initialize Right Pointer
             int rightPointerNum = ixFileHandle.getAvailablePageNumber();
