@@ -139,7 +139,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
     // Here we are guaranteed to have a leaf node in child and we can safely insert 
     // the new data into the leaf node;
-    if (insertIntoLeaf(child, key, attribute, rid) == -1) {
+    if (insertIntoLeaf(ixFileHandle, child, key, attribute, rid) == -1) {
         return -1;
     }
      
@@ -401,9 +401,11 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
     return 0;
 }
 
-RC IndexManager::insertIntoLeaf(void *child, const void *key
-                                                   , const Attribute &attribute
-                                                   , const RID &rid) {
+RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
+                                        , void *child
+                                        , const void *key
+                                        , const Attribute &attribute
+                                        , const RID &rid) {
     // calculate the freeSpaceOffset
     int freeSpace = IXFileHandle::getFreeSpace(child);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
@@ -496,6 +498,9 @@ RC IndexManager::insertIntoLeaf(void *child, const void *key
 
             // enter new data
             memcpy((char *) child + newOffset, (char *) newData, sizeOfNewData);
+
+            // update freespace
+            ixFileHandle.setFreeSpace(child, freeSpace - sizeOfNewData);
             return 0;
         case TypeReal:
             // do work for a float
@@ -588,19 +593,22 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
                 // copy the content that is going to be shifted over
                 memcpy(shiftContent, (char*)child + nextKeyOffset, shiftSize);
 
-                // remove just the RID
+                // calculate the length of data being deleted
+                int deleteLength;
                 if (ridCount > 1) {
-                    // copy over the previous RID and key and upate the freespace
-                    memcpy((char*)child + (nextKeyOffset - RID_SIZE), shiftContent, shiftSize);
-                    ixFileHandle.setFreeSpace(child, freeSpace + RID_SIZE);
-
+                    deleteLength = RID_SIZE;
                 }
-                // remove the RID and the key
                 else {
-                    // copy over the previous RID and update the freespace
-                    memcpy((char*)child + (nextKeyOffset - RID_SIZE - keySize), shiftContent, shiftSize);
-                    ixFileHandle.setFreeSpace(child, freeSpace + RID_SIZE + keySize);
+                    deleteLength = RID_SIZE + keySize + sizeof(int);
                 }
+
+                // Zero out the data where key + shift data used to lie
+                memset((char*)child + (nextKeyOffset - deleteLength), 0, shiftSize + deleteLength);
+
+                // copy over the previous RID and key and upate the freespace
+                memcpy((char*)child + (nextKeyOffset - RID_SIZE), shiftContent, shiftSize);
+                ixFileHandle.setFreeSpace(child, freeSpace + deleteLength);
+
             }
         } else if (comparisonResult == -1) {
             // key does not exist in list
@@ -615,16 +623,40 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
 }
 
 int IndexManager::compareKeys(const void *key1, const void *key2, const Attribute attribute) {
-    int result = 0;
-
     switch (attribute.type) {
         case TypeInt:
         case TypeReal:
-            break;
+            int keyOne, keyTwo;
+            memcpy(&keyOne, (char*)key1, sizeof(int));
+            memcpy(&keyTwo, (char*)key2, sizeof(int));
+
+            return keyOne < keyTwo;
         case TypeVarChar:
-            break;
-        default:
-            return -1;
+            int keyOneLength, keyTwoLength;
+            memcpy(&keyOneLength, (char*)key1, sizeof(int));
+            memcpy(&keyTwoLength, (char*)key2, sizeof(int));
+
+            // get the smaller of the two to do the character comparisons
+            int compareLen = (keyOneLength > keyTwoLength) ? keyTwoLength : keyOneLength;
+
+            // iterate over the keys and decide which is longer
+            char keyOneVal;
+            char keyTwoVal;
+            for (int i = 0; i < compareLen; i++) {
+                memcpy(&keyOneVal, (char*)key1 + (i * sizeof(char)), sizeof(char));
+                memcpy(&keyTwoVal, (char*)key2 + (i * sizeof(char)), sizeof(char));
+
+                if (keyOneVal > keyTwoVal) return 1;
+                if (keyOneVal < keyTwoVal) return -1;
+            }
+
+            // both match up to the shortest string, therefore, return the value
+            // either the longest string or that they are the same length
+            if (keyOneLength > keyTwoLength) return 1;
+            if (keyOneLength < keyTwoLength) return -1;
+
+            // both equal
+            return 0;
     }
 
     return -1;

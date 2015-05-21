@@ -74,7 +74,7 @@ class IndexManager {
         RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
         // Used to enter a Key into a leaf 
-        RC insertIntoLeaf(void *child, const void *key, const Attribute &attribute, const RID &rid);
+        RC insertIntoLeaf(IXFileHandle &ixFileHandle, void *child, const void *key, const Attribute &attribute, const RID &rid);
 
         // Used to remove a key from a leaf
         RC deleteFromLeaf(IXFileHandle &ixFileHandle, void *child, const void *key, const Attribute &attribute, const RID &rid);
