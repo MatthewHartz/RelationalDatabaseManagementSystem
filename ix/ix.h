@@ -61,8 +61,8 @@ class IndexManager {
         // Splits the child into two seperate nodes (odd will push left)
         void splitChild();
 
-        // Traverses the tree
-        RC traverse(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle, int &leftPageNum);
+        // Gets the following node based upon key value
+        RC getNextNodeByKey(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle, int &leftPageNum);
 
         // Determines if the page has enough space
         bool hasEnoughSpace(void *data, const Attribute &attribute);
@@ -93,6 +93,9 @@ class IndexManager {
 
         // Creates an initial key on the insert of a leaf node
         void createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid);
+
+        // Prints out the keys in a non leaf node
+        int printKeysInNonLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute) const;
 
     protected:
         IndexManager();

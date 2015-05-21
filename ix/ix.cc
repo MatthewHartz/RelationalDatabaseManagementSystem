@@ -60,6 +60,8 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
     FileHandle* handle = &ixfileHandle.getHandle();
+    void *root =ixfileHandle.getRoot();
+    handle->writePage(0, root);
     if (pfm->closeFile(*handle) == -1) return -1;
     delete handle;
 
@@ -82,7 +84,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
 
         // if node == null then we need to create a leaf page
-        if (traverse(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
+        if (getNextNodeByKey(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
             return -1;
         }
 
@@ -116,6 +118,11 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             memcpy((char*) parent + offSet, key, keyLength);
             offSet += keyLength;
             memcpy((char*) parent + offSet, &rightPointerNum, sizeof(int));
+            offSet += sizeof(int);
+
+            // update freespace
+            int freeSpace = ixFileHandle.getFreeSpace(parent);
+            ixFileHandle.setFreeSpace(parent, freeSpace - offSet);
 
             // Write page to memory (GOING TO ASSUME ROOT)
             ixFileHandle.setRoot(parent);
@@ -167,7 +174,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
 
         // if node == null then we need to create a leaf page
-        if (traverse(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
+        if (getNextNodeByKey(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
             return -1;
         }
 
@@ -211,7 +218,16 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     return -1;
 }
 
-void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
+void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
+    void *node = ixFileHandle.getRoot();
+
+    // print initial brace
+    cout << "{" << endl;
+
+    printKeysInNonLeaf(ixFileHandle, node, attribute);
+
+    // print closing brace
+    cout << "}" << endl;
 }
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
@@ -237,7 +253,7 @@ bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
     return true;
 }
 
-RC IndexManager::traverse(void * &child, void * &parent
+RC IndexManager::getNextNodeByKey(void * &child, void * &parent
                                        , const void *key
                                        , const Attribute &attribute
                                        , IXFileHandle &ixfileHandle
@@ -549,7 +565,6 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
             keySize = sizeof(int) + keyLength;
         } else {
             keySize = sizeof(int);
-
         }
 
         // Initialize the comparison key
@@ -718,6 +733,69 @@ int IndexManager::getKeyLength(const void *key, Attribute attr) {
     return length;
 }
 
+int IndexManager::printKeysInNonLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute) const {
+    vector<string> keys;
+    vector<int> pages;
+    int freeSpace = IXFileHandle::getFreeSpace(node);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int offset = 0;
+
+    // Save the number of bits for key length (this will be used to read in length size
+    int keyLengthSize;
+    switch (attribute.type) {
+        case TypeInt:
+        case TypeReal:
+            keyLengthSize = 0;
+            break;
+        case TypeVarChar:
+            keyLengthSize = 4;
+            break;
+        default:
+            return -1;
+    }
+
+    // collect every key and every page
+    int keyLength;
+    int pageNumber;
+    while (offset < freeSpaceOffset) {
+        // extract page number
+        memcpy(&pageNumber, (char*)node + offset, sizeof(int));
+        offset += sizeof(int);
+        pages.push_back(pageNumber);
+
+        // if page number was the last thing in the node
+        if (offset >= freeSpaceOffset) break;
+
+        // extract key
+        memcpy(&keyLength, (char*)node + offset, keyLengthSize);
+        // Tease out the key from the node
+        if (keyLengthSize != 0) {
+            string key;
+            offset += sizeof(int);
+            memcpy(&key, (char*)node + offset, sizeof(int));
+            keys.push_back(key);
+        } else {
+            // TODO Figure out how to get this to work.
+            string key;
+            memcpy(&key, (char*)node + offset, sizeof(int));
+            keys.push_back(key);
+        }
+    }
+
+    // print the keys wrapped in brackets
+    cout << "\"keys\":[";
+
+    bool first = true;
+    for (string key : keys) {
+        if (!first) cout << ",";
+        cout << "\"" << key << "\"";
+    }
+
+    cout << "]," << endl;
+
+    return 0;
+}
+
 void IXFileHandle::setRightPointer(void *node, int rightPageNum) {
     memcpy((char *) node + NODE_RIGHT, &rightPageNum, sizeof(int));    
 }
@@ -788,12 +866,6 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     // initializes the node type slot with node type
     memcpy((char*)data + NODE_TYPE, &nodeType, sizeof(byte));
 
-    // if the node type is not a leaf, initialize the first pointer
-//    if (type == TypeNode) {
-//        int pointer = this->getAvailablePageNumber() + 1;
-//        memcpy(data, &pointer, sizeof(int));
-//    }
-    // what does this need to return?
     return 0;
 }
 
