@@ -77,7 +77,7 @@ class IndexManager {
         RC insertIntoLeaf(void *child, const void *key, const Attribute &attribute, const RID &rid);
 
         // Used to remove a key from a leaf
-        RC deleteFromLeaf(void *child, const void *key, const Attribute &attribute, const RID &rid);
+        RC deleteFromLeaf(IXFileHandle &ixFileHandle, void *child, const void *key, const Attribute &attribute, const RID &rid);
 
         // Compares the keys and returns -1 if key1 < key2, 0 if key1 == key2, 1 if key1 > key2
         int compareKeys(const void *key1, const void *key2, const Attribute attribute);

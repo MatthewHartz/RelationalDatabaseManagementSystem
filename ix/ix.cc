@@ -190,7 +190,12 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     }
 
     // Remove node from leaf
-    deleteFromLeaf(child, key, attribute, rid);
+    deleteFromLeaf(ixFileHandle, child, key, attribute, rid);
+
+    // write the node to file
+    if(ixFileHandle.getHandle().writePage(childPageNum, child) == -1) {
+        return -1;
+    }
 
     return 0;
 }
@@ -504,9 +509,11 @@ RC IndexManager::insertIntoLeaf(void *child, const void *key
     }
 }
 
-RC IndexManager::deleteFromLeaf(void *child, const void *key
-                                            , const Attribute &attribute
-                                            , const RID &rid) {
+RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
+                                , void *child
+                                , const void *key
+                                , const Attribute &attribute
+                                , const RID &rid) {
     // calculate the freeSpaceOffset
     int freeSpace = IXFileHandle::getFreeSpace(child);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
@@ -531,16 +538,18 @@ RC IndexManager::deleteFromLeaf(void *child, const void *key
     void *comparisonKey;
     while (nextKeyOffset < freeSpaceOffset) {
         memcpy(&keyLength, (char*)child + nextKeyOffset, keyLengthSize);
-
         // Tease out the key from the node
         int keySize;
         if (keyLengthSize != 0) {
             keySize = sizeof(int) + keyLength;
-            memcpy(comparisonKey, (char*)child + nextKeyOffset, keySize);
         } else {
             keySize = sizeof(int);
-            memcpy(comparisonKey, (char*)child + nextKeyOffset, keySize);
+
         }
+
+        // Initialize the comparison key
+        comparisonKey = malloc(keySize);
+        memcpy(comparisonKey, (char*)child + nextKeyOffset, keySize);
 
         nextKeyOffset += keySize;
 
@@ -548,16 +557,56 @@ RC IndexManager::deleteFromLeaf(void *child, const void *key
 
         // found the key, now remove either the whole key, or just an RID
         if (comparisonResult == 0) {
-            // get RID count offset
-
-
             // get the RID count
+            int ridCount = getNumberOfRids(child, nextKeyOffset);
 
+            // iterate over all the rids
+            bool ridFound = false;
+            for (int i = 0; i < ridCount; i++) {
+                int pageNum, slotNum;
+                nextKeyOffset += sizeof(int);
+                memcpy(&pageNum, (char*)child + nextKeyOffset , sizeof(int));
+                nextKeyOffset += sizeof(int);
+                memcpy(&slotNum, (char*)child + nextKeyOffset , sizeof(int));
+                nextKeyOffset += sizeof(int);
 
-            // Determine if > 1
+                // rid found!
+                if (pageNum == rid.pageNum && slotNum == rid.slotNum) {
+                    ridFound = true;
+                    break;
+                }
+            }
 
+            if (!ridFound) {
+                // rid does not exist in list
+                return -1;
+            } else {
+                // create temp pointer for content to be shifted
+                int shiftSize = freeSpaceOffset - nextKeyOffset;
+                void *shiftContent = malloc(shiftSize);
 
-            // if > 1, remove 1 RID else remove the whole key
+                // copy the content that is going to be shifted over
+                memcpy(shiftContent, (char*)child + nextKeyOffset, shiftSize);
+
+                // remove just the RID
+                if (ridCount > 1) {
+                    // copy over the previous RID and key and upate the freespace
+                    memcpy((char*)child + (nextKeyOffset - RID_SIZE), shiftContent, shiftSize);
+                    ixFileHandle.setFreeSpace(child, freeSpace + RID_SIZE);
+
+                }
+                // remove the RID and the key
+                else {
+                    // copy over the previous RID and update the freespace
+                    memcpy((char*)child + (nextKeyOffset - RID_SIZE - keySize), shiftContent, shiftSize);
+                    ixFileHandle.setFreeSpace(child, freeSpace + RID_SIZE + keySize);
+                }
+            }
+        } else if (comparisonResult == -1) {
+            // key does not exist in list
+            return -1;
+        } else {
+            nextKeyOffset = getNextKeyOffset(nextKeyOffset, child);
         }
 
     }
@@ -613,7 +662,7 @@ void IndexManager::createNewLeafEntry(void *data, const void *key, const Attribu
 // that we are placed at the # of RID's slot
 int IndexManager::getNextKeyOffset(int RIDnumOffset, void *node) {
     // we need to extract the number RID's that exist in the node
-    return getNumberOfRids(node, RIDnumOffset) * RID_SIZE;
+    return RIDnumOffset + sizeof(int) + getNumberOfRids(node, RIDnumOffset) * RID_SIZE;
 }
 
 int IndexManager::getKeyLength(const void *key, Attribute attr) {
