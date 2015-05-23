@@ -74,6 +74,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
     int childPageNum;
+    int parentPageNum;
     
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
@@ -84,7 +85,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
 
         // if node == null then we need to create a leaf page
-        if (getNextNodeByKey(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
+        if (getNextNodeByKey(child, parent, key, attribute, ixFileHandle, childPageNum, parentPageNum) == -1) {
             return -1;
         }
 
@@ -141,7 +142,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // If the node does not have enough space, we need to split the node
     if(!hasEnoughSpace(child, attribute)) {
         // if not enough space we need to split
-        //splitChild();
+        splitChild(child, parent, attribute, ixFileHandle, key, childPageNum, parentPageNum);
     }
 
     // Here we are guaranteed to have a leaf node in child and we can safely insert 
@@ -162,7 +163,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // extract root
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
-    int childPageNum;
+    int childPageNum, parentPageNum;
 
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
@@ -174,7 +175,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
 
         // if node == null then we need to create a leaf page
-        if (getNextNodeByKey(child, parent, key, attribute, ixFileHandle, childPageNum) == -1) {
+        if (getNextNodeByKey(child, parent, key, attribute, ixFileHandle, childPageNum, parentPageNum) == -1) {
             return -1;
         }
 
@@ -257,10 +258,12 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
                                        , const void *key
                                        , const Attribute &attribute
                                        , IXFileHandle &ixfileHandle
-                                       , int &leftPageNum) {
+                                       , int &leftPageNum
+                                       , int &parentPageNum) {
     // next if node is empty
     parent = child;
     child = NULL;
+    parentPageNum = leftPageNum;
     int offset = 0;
     int counter = 0;
 
@@ -302,6 +305,114 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
             return -1;
         default:
             return -1;
+    }
+}
+
+RC IndexManager::splitChild(void* child, void *parent
+                                       , const Attribute &attribute
+                                       , IXFileHandle &ixFileHandle
+                                       , const void *key
+                                       , int &childPageNum
+                                       , int &parentPageNum) {
+    // calculate the freeSpaceOffset
+    int freeSpace = IXFileHandle::getFreeSpace(child);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int currentKeyOffset = 0;
+    int nextKeyOffset;
+    int splitPosition;
+
+    // Get node type
+    NodeType nodeType = IXFileHandle::getNodeType(child);
+
+    switch (nodeType) {
+        case TypeRoot:
+        case TypeNode:
+            break;
+        case TypeLeaf:
+            // Save the number of bits for key length (this will be used to read in length size
+            int keyLengthSize;
+            switch (attribute.type) {
+                case TypeInt:
+                case TypeReal:
+                    keyLengthSize = 0;
+                    break;
+                case TypeVarChar:
+                    keyLengthSize = 4;
+                    break;
+                default:
+                    return -1;
+            }
+
+            // Iterate over keys
+            int keyLength; // length that describes how many chars in a varchar for example
+            int keySize;
+
+            while (currentKeyOffset < freeSpaceOffset) {
+                memcpy(&keyLength, (char*)child + currentKeyOffset, keyLengthSize);
+                // Tease out the key from the node
+                if (keyLengthSize != 0) {
+                    keySize = sizeof(int) + keyLength;
+                } else {
+                    keySize = sizeof(int);
+                }
+
+                nextKeyOffset = getNextKeyOffset(currentKeyOffset + keySize, child);
+                keySize = nextKeyOffset - currentKeyOffset;
+
+                // FOUND SPLIT POINT
+                if (nextKeyOffset >= SPLIT_THRESHOLD) {
+                    // determine which side to split on key
+                    splitPosition = (SPLIT_THRESHOLD - currentKeyOffset)
+                            > (nextKeyOffset - SPLIT_THRESHOLD)
+                            ? nextKeyOffset : currentKeyOffset;
+                    break;
+                }
+
+                currentKeyOffset += keySize;
+            }
+
+            // Initialize right page
+            int rightPageNum = ixFileHandle.getAvailablePageNumber();
+            void *rightPage = malloc(PAGE_SIZE);
+            ixFileHandle.initializeNewNode(rightPage, TypeLeaf);
+
+            // Save copy data to right page
+            int shiftedSize = freeSpaceOffset - splitPosition;
+            memcpy((char *) rightPage, (char *) child + splitPosition, shiftedSize);
+            ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) - shiftedSize);
+            ixFileHandle.setRightPointer(rightPage, ixFileHandle.getRightPointer(child));
+
+            // clear out the move data from left page
+            memset((char *) child + splitPosition, 0, shiftedSize);
+
+            // update freeSpace
+            ixFileHandle.setFreeSpace(child, splitPosition);
+
+            // update the parent with a new director, insertDirector will automatically update freespace
+            if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
+                return -1;
+            }
+            // here we have write the parent to file
+            ixFileHandle.getHandle().writePage(parentPageNum, parent);
+
+            // I think here we need to write to write our pages to file for all pages
+            ixFileHandle.getHandle().writePage(childPageNum, child);
+            ixFileHandle.getHandle().writePage(rightPageNum, rightPage);
+
+            // here we will know exactly what child to insert the the incoming key
+            void *tempParent = parent;
+//            if (getNextNodeByKey(child, tempParent, key, attribute, ixFileHandle, childPageNum, parentPageNum) == -1) {
+//                return -1;
+//            }
+
+            // we need to write all pages to file, just to make sure
+            if (rightPage == child) {
+                ixFileHandle.getHandle().writePage(rightPageNum, rightPage);
+            } else {
+
+            }
+
+            break;
     }
 }
 
@@ -709,7 +820,7 @@ void IndexManager::createNewLeafEntry(void *data, const void *key, const Attribu
 // that we are placed at the # of RID's slot
 int IndexManager::getNextKeyOffset(int RIDnumOffset, void *node) {
     // we need to extract the number RID's that exist in the node
-    return RIDnumOffset + sizeof(int) + getNumberOfRids(node, RIDnumOffset) * RID_SIZE;
+    return RIDnumOffset + sizeof(int) + (getNumberOfRids(node, RIDnumOffset) * RID_SIZE);
 }
 
 int IndexManager::getKeyLength(const void *key, Attribute attr) {
