@@ -143,6 +143,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     if(!hasEnoughSpace(child, attribute)) {
         // if not enough space we need to split
         splitChild(child, parent, attribute, ixFileHandle, key, childPageNum, parentPageNum);
+
+        // Now the parent and children have been created/modified, reinsert into tree
+        return insertEntry(ixFileHandle, attribute, key, rid);
     }
 
     // Here we are guaranteed to have a leaf node in child and we can safely insert 
@@ -398,19 +401,6 @@ RC IndexManager::splitChild(void* child, void *parent
             // I think here we need to write to write our pages to file for all pages
             ixFileHandle.getHandle().writePage(childPageNum, child);
             ixFileHandle.getHandle().writePage(rightPageNum, rightPage);
-
-            // here we will know exactly what child to insert the the incoming key
-            void *tempParent = parent;
-//            if (getNextNodeByKey(child, tempParent, key, attribute, ixFileHandle, childPageNum, parentPageNum) == -1) {
-//                return -1;
-//            }
-
-            // we need to write all pages to file, just to make sure
-            if (rightPage == child) {
-                ixFileHandle.getHandle().writePage(rightPageNum, rightPage);
-            } else {
-
-            }
 
             break;
     }
