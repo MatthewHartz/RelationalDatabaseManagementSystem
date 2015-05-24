@@ -223,15 +223,56 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
-    void *node = ixFileHandle.getRoot();
+    void *root = ixFileHandle.getRoot();
+
+    // do the initial call to printNode at the root
+    printNode(root, ixFileHandle, attribute);
+}
+
+RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute) const {
+    vector<string> keys;
+    vector<int> pointers;
+
+    // collect the keys based on what type of node
+    NodeType type = ixFileHandle.getNodeType(node);
+    switch (type) {
+        case TypeLeaf:
+            getKeysInLeaf(ixFileHandle, node, attribute, keys);
+            break;
+        case TypeNode:
+            getKeysInNonLeaf(ixFileHandle, node, attribute, keys, pointers);
+            break;
+        case TypeRoot:
+            getKeysInNonLeaf(ixFileHandle, node, attribute, keys, pointers);
+            break;
+    }
 
     // print initial brace
     cout << "{" << endl;
 
-    printKeysInNonLeaf(ixFileHandle, node, attribute);
+    // print the keys
+    cout << "\"keys\":[";
+    for (auto &key: keys) {
+        cout << "\"" << key << "\"";
+    }
+
+    // close the keys
+    cout << "]";
+
+    // recursively descend the tree printing out the children and their keys
+    cout << "\"children\":[";
+    for (auto &pointer: pointers) {
+        void *nextNode = malloc(PAGE_SIZE);
+        ixFileHandle.getHandle().readPage(pointer, nextNode);
+        printNode(nextNode, ixFileHandle, attribute);
+    }
 
     // print closing brace
-    cout << "}" << endl;
+    cout << endl << "}" << endl;
+
+    // refresh the keys vector
+    keys.clear();
+    pointers.clear();
 }
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
@@ -834,9 +875,94 @@ int IndexManager::getKeyLength(const void *key, Attribute attr) {
     return length;
 }
 
-int IndexManager::printKeysInNonLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute) const {
-    vector<string> keys;
-    vector<int> pages;
+RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute, vector<string> &keys) const {
+    int freeSpace = IXFileHandle::getFreeSpace(node);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int offset = 0;
+
+    // Save the number of bits for key length (this will be used to read in length size
+    int keyLengthSize;
+    switch (attribute.type) {
+        case TypeInt:
+        case TypeReal:
+            keyLengthSize = 0;
+            break;
+        case TypeVarChar:
+            keyLengthSize = 4;
+            break;
+        default:
+            return -1;
+    }
+
+    // collect every key and every page
+    int keyLength;
+    int pageNumber;
+    while (offset < freeSpaceOffset) {
+        // This is the key that will be joined with the key and the rids
+        string returnKey = "";
+        string key;
+
+        // extract key
+        memcpy(&keyLength, (char*)node + offset, keyLengthSize);
+        // Tease out the key from the node
+        if (keyLengthSize != 0) {
+            // TODO fix this for strings
+            offset += sizeof(int);
+            memcpy(&key, (char*)node + offset, sizeof(int));
+            //keys.push_back(key);
+        } else {
+            int temp;
+            memcpy(&temp, (char*)node + offset, sizeof(int));
+            offset += sizeof(int);
+            key = std::to_string(temp);
+            //keys.push_back(std::to_string(key));
+        }
+
+        returnKey += key;
+
+        // get number of Rids (had to use this because it's a const function -_-
+        string ridString = "";
+        int numberOfRids;
+        memcpy(&numberOfRids, (char*)node + offset, sizeof(int));
+        offset += sizeof(int);
+
+        // create and append the rid string to the return key
+        int counter = 0;
+        returnKey += "[";
+
+        for (int i = 0; i < numberOfRids; i++) {
+            string rid;
+
+            // append a comma between rids
+            if (counter > 0) rid = ",";
+
+            int pageNum, slotNum;
+
+            memcpy(&pageNum, (char*)node + offset, sizeof(int));
+            offset += sizeof(int);
+            memcpy(&slotNum, (char*)node + offset, sizeof(int));
+            offset += sizeof(int);
+
+            rid += "(" + std::to_string(pageNum) + "," + std::to_string(slotNum) + ")";
+
+
+            ridString += rid;
+        }
+
+        returnKey += ridString;
+        returnKey += "]";
+
+        keys.push_back(returnKey);
+    }
+
+    return 0;
+}
+
+RC IndexManager::getKeysInNonLeaf(IXFileHandle &ixFileHandle
+                                 , void *node
+                                 , const Attribute &attribute
+                                 , vector<string> &keys
+                                 , vector<int> &pages) const {
     int freeSpace = IXFileHandle::getFreeSpace(node);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
     int offset = 0;
@@ -876,36 +1002,14 @@ int IndexManager::printKeysInNonLeaf(IXFileHandle &ixFileHandle, void *node, con
             memcpy(&key, (char*)node + offset, sizeof(int));
             keys.push_back(key);
         } else {
-            // TODO Figure out how to get this to work.
-            string key;
+            int key;
             memcpy(&key, (char*)node + offset, sizeof(int));
-            keys.push_back(key);
+            offset += sizeof(int);
+            keys.push_back(std::to_string(key));
         }
     }
 
-    // print the keys wrapped in brackets
-    cout << "\"keys\":[";
-
-    bool first = true;
-    for (string key : keys) {
-        if (!first) cout << ",";
-        cout << "\"" << key << "\"";
-    }
-
-    cout << "]," << endl;
-
     return 0;
-}
-
-void IXFileHandle::setRightPointer(void *node, int rightPageNum) {
-    memcpy((char *) node + NODE_RIGHT, &rightPageNum, sizeof(int));    
-}
-
-NodeType IXFileHandle::getNodeType(void *node) {
-    NodeType type;
-    memcpy(&type, (char *) node + NODE_TYPE, sizeof(byte));
-
-    return type;
 }
 
 IX_ScanIterator::IX_ScanIterator()
@@ -949,6 +1053,23 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
 
     // sets the node type
+    setNodeType(data, type);
+
+    return 0;
+}
+
+void IXFileHandle::setRightPointer(void *node, int rightPageNum) {
+    memcpy((char *) node + NODE_RIGHT, &rightPageNum, sizeof(int));
+}
+
+NodeType IXFileHandle::getNodeType(void *node) {
+    NodeType type;
+    memcpy(&type, (char *) node + NODE_TYPE, sizeof(byte));
+
+    return type;
+}
+
+void IXFileHandle::setNodeType(void *node, NodeType type) {
     byte nodeType;
     switch (type) {
         case TypeNode:
@@ -960,14 +1081,10 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
         case TypeRoot:
             nodeType = 2;
             break;
-        default:
-            return -1;
     }
 
     // initializes the node type slot with node type
-    memcpy((char*)data + NODE_TYPE, &nodeType, sizeof(byte));
-
-    return 0;
+    memcpy((char*)node + NODE_TYPE, &nodeType, sizeof(int));
 }
 
 int IXFileHandle::getFreeSpace(void *data) {

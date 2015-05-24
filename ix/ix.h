@@ -10,15 +10,15 @@
 
 // Constants
 const int NODE_FREE = PAGE_SIZE - sizeof(int);
-const int NODE_TYPE = PAGE_SIZE - ((sizeof(int) * 2) + sizeof(byte));
 const int NODE_RIGHT = PAGE_SIZE - ((sizeof(int) * 2));
+const int NODE_TYPE = PAGE_SIZE - ((sizeof(int) * 3));
 const int RID_SIZE = 2 * sizeof(int);
 const int SPLIT_THRESHOLD = PAGE_SIZE / 2;
 
-const int DEFAULT_FREE = PAGE_SIZE - 9;
+const int DEFAULT_FREE = PAGE_SIZE - (sizeof(int) * 3);
 
 // Nodes
-typedef enum { TypeNode = 0, TypeLeaf, TypeRoot } NodeType;
+typedef enum { TypeNode = 0, TypeLeaf = 1, TypeRoot = 2} NodeType;
 
 class IX_ScanIterator;
 class IXFileHandle;
@@ -95,8 +95,14 @@ class IndexManager {
         // Creates an initial key on the insert of a leaf node
         void createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid);
 
-        // Prints out the keys in a non leaf node
-        int printKeysInNonLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute) const;
+        // The recursive function that will iterate over the tree printing out all the nodes contents
+        RC printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute) const;
+
+        // Collects the keys in a leaf node
+        RC getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute, vector<string> &keys) const;
+
+        // Collect the keys in a non leaf node
+        RC getKeysInNonLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute, vector<string> &keys, vector<int> &pages) const;
 
     protected:
         IndexManager();
