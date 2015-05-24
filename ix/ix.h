@@ -72,7 +72,7 @@ class IndexManager {
         RC insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum, IXFileHandle &ixFileHandle);
         
         // returns a director triplet at a given offset
-        RC getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
+        RC getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
 
         // Used to enter a Key into a leaf 
         RC insertIntoLeaf(IXFileHandle &ixFileHandle, void *child, const void *key, const Attribute &attribute, const RID &rid);
@@ -166,8 +166,11 @@ class IXFileHandle {
         FileHandle* getHandle() { return handle; };
         void setHandle(FileHandle *h) { handle = h; };
         void setRoot(void *data) { handle->currentPage = data; };
+        //void setRoot(void *data) { memcpy(handle->currentPage, data, PAGE_SIZE); };
         void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
         void setNodeType(void *node, NodeType type);
+        void writeNode(int pageNumber, void* data);
+        void readNode(int pageNumber, void *data);
         void* getRoot() { return handle->currentPage; };
         RC getNode(int pageNum, void *node) { return getHandle()->readPage(pageNum, node); };
         int getRightPointer(void *node);

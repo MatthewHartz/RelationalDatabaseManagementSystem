@@ -307,6 +307,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 
     // collect the keys based on what type of node
     NodeType type = ixFileHandle.getNodeType(node);
+    int counter = 0;
     switch (type) {
         case TypeLeaf:
             getKeysInLeaf(ixFileHandle, node, attribute, keys);
@@ -317,7 +318,12 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
             // print the keys
             cout << "\"keys\":[";
             for (auto &key: keys) {
+                if (counter > 0) {
+                    cout << ",";
+                }
                 cout << "\"" << key << "\"";
+
+                counter++;
             }
 
             // close the keys
@@ -344,7 +350,6 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 
             // recursively descend the tree printing out the children and their keys
             cout << depthString << "\"children\":[";
-            int counter = 0;
             for (auto &pointer: pointers) {
                 if (counter > 0) cout << ",";
                 void *nextNode = malloc(PAGE_SIZE);
@@ -528,20 +533,25 @@ RC IndexManager::splitChild(void* child, void *parent
             int shiftedSize = freeSpaceOffset - splitPosition;
             memcpy((char *) rightPage, (char *) child + splitPosition, shiftedSize);
             ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) - shiftedSize);
+
+            // update the pointers
             ixFileHandle.setRightPointer(rightPage, ixFileHandle.getRightPointer(child));
+            ixFileHandle.setRightPointer(child, rightPageNum);
 
             // clear out the move data from left page
             memset((char *) child + splitPosition, 0, shiftedSize);
 
             // update freeSpace
-            ixFileHandle.setFreeSpace(child, splitPosition);
+            ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
             // update the parent with a new director, insertDirector will automatically update freespace
             if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
                 return -1;
             }
             // here we have write the parent to file
-            ixFileHandle.getHandle()->writePage(parentPageNum, parent);
+            // test
+            //ixFileHandle.getHandle()->writePage(parentPageNum, parent);
+            ixFileHandle.writeNode(parentPageNum, parent);
 
             // I think here we need to write to write our pages to file for all pages
             ixFileHandle.getHandle()->writePage(childPageNum, child);
@@ -572,7 +582,9 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
 
                 // test if director page is zero in order to break out
                 if (rightPage == 0) {
-                    return 0;
+                    //return 0;
+                    offset += sizeof(int);
+                    break;
                 }
 
                 // extract the key to compare to
@@ -582,6 +594,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
                 if (directorKey > comparisonKey) {
                    break;
                 }
+
+                offset += 8;
             }
             break;
         case TypeReal:
@@ -620,37 +634,40 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // update Freespace
     freeSpace -= size;
     ixFileHandle.setFreeSpace(node, freeSpace);
+    int temp = ixFileHandle.getFreeSpace(node);
     return 0;
 }
 
-RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute) {
+RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute) {
+    int off = offset;
+
     switch(attribute.type) {
         case TypeInt:
-            memcpy(&leftPointer, (char*) node + offset, sizeof(int));
-            offset += sizeof(int);
-            memcpy(key, (char*) node + offset, sizeof(int));
-            offset += sizeof(int);
-            memcpy(&rightPointer, (char*) node + offset, sizeof(int));
+            memcpy(&leftPointer, (char*) node + off, sizeof(int));
+            off += sizeof(int);
+            memcpy(key, (char*) node + off, sizeof(int));
+            off += sizeof(int);
+            memcpy(&rightPointer, (char*) node + off, sizeof(int));
             break;
         case TypeReal:
-            memcpy(&leftPointer, (char*) node + offset, sizeof(int));
-            offset += sizeof(int);
-            memcpy(key, (char*) node + offset, sizeof(float));
-            offset += sizeof(float);
-            memcpy(&rightPointer, (char*) node + offset, sizeof(int));
+            memcpy(&leftPointer, (char*) node + off, sizeof(int));
+            off += sizeof(int);
+            memcpy(key, (char*) node + off, sizeof(float));
+            off += sizeof(float);
+            memcpy(&rightPointer, (char*) node + off, sizeof(int));
             break;
         case TypeVarChar:
-            memcpy(&leftPointer, (char*) node + offset, sizeof(int));
-            offset += sizeof(int);
+            memcpy(&leftPointer, (char*) node + off, sizeof(int));
+            off += sizeof(int);
 
             int length;
-            memcpy(&length, (char*) node + offset, sizeof(int));
-            memcpy(key, (char*) node + offset, sizeof(int));
-            offset += sizeof(int);
+            memcpy(&length, (char*) node + off, sizeof(int));
+            memcpy(key, (char*) node + off, sizeof(int));
+            off += sizeof(int);
 
-            memcpy(key, (char*) node + offset, length);
-            offset += length;
-            memcpy(&rightPointer, (char*) node + offset, sizeof(int));
+            memcpy(key, (char*) node + off, length);
+            off += length;
+            memcpy(&rightPointer, (char*) node + off, sizeof(int));
             break;
         default:
             return -1;
@@ -1075,7 +1092,7 @@ RC IndexManager::getKeysInNonLeaf(IXFileHandle &ixFileHandle
                                  , const Attribute &attribute
                                  , vector<string> &keys
                                  , vector<int> &pages) const {
-    int freeSpace = IXFileHandle::getFreeSpace(node);
+    int freeSpace = ixFileHandle.getFreeSpace(node);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
     int offset = 0;
 
@@ -1418,6 +1435,22 @@ void IXFileHandle::setNodeType(void *node, NodeType type) {
 
     // initializes the node type slot with node type
     memcpy((char*)node + NODE_TYPE, &nodeType, sizeof(int));
+}
+
+void IXFileHandle::writeNode(int pageNumber, void* data) {
+    // If page number == 0, update root node
+    if (pageNumber == 0) {
+        setRoot(data);
+    }
+
+    void *test = getRoot();
+
+    // write page
+    getHandle()->writePage(pageNumber, data);
+}
+
+void IXFileHandle::readNode(int pageNumber, void* data) {
+    getHandle()->readPage(pageNumber, data);
 }
 
 int IXFileHandle::getFreeSpace(void *data) {
