@@ -25,10 +25,9 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     cerr << endl << "****In Test Case 2****" << endl;
 
     RID rid;
-    unsigned key = 100;
+    int key = 100;
     rid.pageNum = key;
     rid.slotNum = key+1;
-    int age = 18;
 
     unsigned readPageCount = 0;
     unsigned writePageCount = 0;
@@ -55,7 +54,7 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
         << endl;
 
     // insert entry
-    assertInsertEntry(success, indexManager, ixfileHandle, attribute, &age, rid);
+    assertInsertEntry(success, indexManager, ixfileHandle, attribute, &key, rid);
 
     // collect counters
     assertCollectCounter(success, ixfileHandle, 
@@ -132,7 +131,7 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
         << " appendPageCount:" << appendPageCount << endl;
 
     // delete entry
-    assertDeleteEntry(success, indexManager, ixfileHandle, attribute, &age, rid);
+    assertDeleteEntry(success, indexManager, ixfileHandle, attribute, &key, rid);
 
     // collect counters
     assertCollectCounter(success, ixfileHandle, readPageCountAfter, writePageCountAfter, appendPageCountAfter);
@@ -157,7 +156,7 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
 
     // delete entry again
     // This time it should NOT give success because entry is not there.
-    assertDeleteEntry(fail, indexManager, ixfileHandle, attribute, &age, rid);
+    assertDeleteEntry(fail, indexManager, ixfileHandle, attribute, &key, rid);
 
     // close index file
     assertCloseIndexFile(success, indexManager, ixfileHandle);

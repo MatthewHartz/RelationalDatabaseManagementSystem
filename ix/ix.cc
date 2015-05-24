@@ -258,7 +258,6 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         }
         ix_ScanIterator.setLeafNode(searchNode);
     }
-
     // let's set our type and functions
     switch(attribute.type) {
         case TypeInt:
@@ -984,7 +983,6 @@ RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Att
 
     // collect every key and every page
     int keyLength;
-    int pageNumber;
     while (offset < freeSpaceOffset) {
         // This is the key that will be joined with the key and the rids
         string returnKey = "";
@@ -1128,6 +1126,8 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             nextPageNum = ixFileHandle->getRightPointer(leafNode);
             if (nextPageNum == 0) return IX_EOF;
             ixFileHandle->getHandle().readPage(nextPageNum, leafNode);
+            freeSpace = IXFileHandle::getFreeSpace(leafNode);
+            freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
         }
 
         // get the type and the compare
@@ -1145,21 +1145,21 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     return 0;
 }
 
-void* IX_ScanIterator::getIntType(void *&type, void *node, int offset) {
+void IX_ScanIterator::getIntType(void *&type, void *node, int offset) {
     if (type == NULL) { 
         type = malloc(sizeof(int));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
 }
 
-void* IX_ScanIterator::getRealType(void *&type, void *node, int offset) {
+void IX_ScanIterator::getRealType(void *&type, void *node, int offset) {
     if (type == NULL) {
         type = malloc(sizeof(double));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
 }
 
-void* IX_ScanIterator::getVarCharType(void *&type, void *node, int offset) {
+void IX_ScanIterator::getVarCharType(void *&type, void *node, int offset) {
     int varCharLength;
     memcpy(&varCharLength, (char *) node + offset, sizeof(int));
     if (type == NULL) {
@@ -1176,6 +1176,7 @@ bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
                                                     , int offset
                                                     , bool lowInc
                                                     , bool highInc) {
+                                                   
     // let's extact the leaf, low and high keys to compare
     int leafKey, lKey, hKey;
     memcpy(&leafKey, (char *) node + offset, sizeof(int));
@@ -1213,15 +1214,115 @@ bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
 }
 
 
-bool IX_ScanIterator::compareReals(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc) {
+bool IX_ScanIterator::compareReals(void *incomingKey, const void *low
+                                                    , const void *high
+                                                    , void *node
+                                                    , int offset
+                                                    , bool lowInc
+                                                    , bool highInc) {
 
+    double leafKey, lKey, hKey;
+    memcpy(&leafKey, (char *) node + offset, sizeof(double));
+    if (low != NULL) memcpy(&lKey, (char *) low, sizeof(double));
+    if (high != NULL) memcpy(&hKey, (char *) high, sizeof(double));
 
+    // now we can test our comparisons
+    if (low != NULL && high != NULL) {
+        if (!lowInc && !highInc) {
+            return leafKey > lKey && leafKey < hKey;
+        } else if (!lowInc && highInc) {
+            return leafKey > lKey && leafKey<= hKey;
+        } else if (lowInc && !highInc) {
+            return leafKey >= lKey && leafKey < hKey;
+        } else {
+            return leafKey >= lKey && leafKey <= hKey;
+        }
+    } else if (low == NULL && high != NULL) {
+        if (highInc) {
+            return hKey >= leafKey;
+        } else {
+            return hKey > leafKey;
+        }
+    } else if (low != NULL && high == NULL) {
+        if (lowInc) {
+            return lKey <= leafKey;
+        } else {
+            return lKey < leafKey;
+        }
+    } else {
+        // this just means return everything
+        return true;
+    } 
 }
 
-bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc) {
+bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
+                                                       , const void *high
+                                                       , void *node, int offset
+                                                       , bool lowInc
+                                                       , bool highInc) {
+    char *leafKey = NULL;
+    char *lKey = NULL;
+    char *hKey = NULL;
+    int leafKeySize, lKeySize, hKeySize;
 
+    // extract the key lengths first
+    memcpy(&leafKeySize, (char *) node + offset, sizeof(int));
+    leafKey = new char[leafKeySize + 1];
+    memcpy(&leafKey, (char *) node + offset,leafKeySize);
+    leafKey[leafKeySize] = '\0';
 
-}
+    if (low != NULL) { 
+        memcpy(&lKeySize, (char *) low, sizeof(int));
+        lKey = new char[lKeySize + 1];
+        memcpy(&lKey, (char *) low + sizeof(int), lKeySize);
+        lKey[lKeySize] = '\0';
+    }
+    if (high != NULL) { 
+         memcpy(&hKeySize, (char *) high, sizeof(int)); 
+         hKey = new char[hKeySize + 1];
+         memcpy(&hKey, (char *) high + sizeof(int), hKeySize);
+         hKey[hKeySize] = '\0';
+    }
+    // now we can test our comparisons
+    string sLeaf(leafKey);
+    string sLKey, sHKey;
+
+    if (lKey != NULL) sLKey = lKey;
+    if (hKey != NULL) sHKey = hKey;
+    
+    // free up the c strings
+    delete leafKey;
+    delete lKey;
+    delete hKey;
+    
+    // now we can test our comparisons
+    if (low != NULL && high != NULL) {
+        if (!lowInc && !highInc) {
+            return sLeaf > sLKey && sLeaf < sHKey;
+        } else if (!lowInc && highInc) {
+            return sLeaf > sLKey && sLeaf <= sHKey;
+        } else if (lowInc && !highInc) {
+            return sLeaf >= sLKey && sLeaf < sHKey;
+        } else {
+            return sLeaf >= sLKey && sLeaf <= sHKey;
+        }
+    } else if (low == NULL && high != NULL) {
+        if (highInc) {
+            return sHKey >= sLeaf;
+        } else {
+            return sHKey > sLeaf;
+        }
+    } else if (low != NULL && high == NULL) {
+        if (lowInc) {
+            return sLKey <= sLeaf;
+        } else {
+            return sLKey < sLeaf;
+        }
+    } else {
+        // this just means return everything
+        return true;
+    } 
+    }
 
 RC IX_ScanIterator::close()
 {
@@ -1349,3 +1450,5 @@ void IX_PrintError (RC rc)
  
    
 }
+
+
