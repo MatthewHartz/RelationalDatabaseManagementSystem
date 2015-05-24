@@ -226,53 +226,78 @@ void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attri
     void *root = ixFileHandle.getRoot();
 
     // do the initial call to printNode at the root
-    printNode(root, ixFileHandle, attribute);
+    int depth = 0;
+    printNode(root, ixFileHandle, attribute, depth);
 }
 
-RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute) const {
+RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute, int depth) const {
     vector<string> keys;
     vector<int> pointers;
+    string depthString;
+
+    // initialize the depth string, this is used to make the correct justifications
+    for (int i = 0; i < depth; i++) {
+        depthString += "\t";
+    }
 
     // collect the keys based on what type of node
     NodeType type = ixFileHandle.getNodeType(node);
     switch (type) {
         case TypeLeaf:
             getKeysInLeaf(ixFileHandle, node, attribute, keys);
+
+            // print initial brace
+            cout << endl << depthString << "{";
+
+            // print the keys
+            cout << "\"keys\":[";
+            for (auto &key: keys) {
+                cout << "\"" << key << "\"";
+            }
+
+            // close the keys
+            cout << "]";
+
+            // print closing brace
+            cout << "}";
             break;
         case TypeNode:
-            getKeysInNonLeaf(ixFileHandle, node, attribute, keys, pointers);
-            break;
         case TypeRoot:
             getKeysInNonLeaf(ixFileHandle, node, attribute, keys, pointers);
+
+            // print initial brace
+            cout << endl << depthString << "{" << endl;
+
+            // print the keys
+            cout << depthString << "\"keys\":[";
+            for (auto &key: keys) {
+                cout << "\"" << key << "\"";
+            }
+
+            // close the keys
+            cout << "]," << endl;
+
+            // recursively descend the tree printing out the children and their keys
+            cout << depthString << "\"children\":[";
+            int counter = 0;
+            for (auto &pointer: pointers) {
+                if (counter > 0) cout << ",";
+                void *nextNode = malloc(PAGE_SIZE);
+                ixFileHandle.getHandle().readPage(pointer, nextNode);
+                printNode(nextNode, ixFileHandle, attribute, depth + 1);
+
+                counter++;
+            }
+
+            // wrap children in end bracket
+            cout << "]";
+
+            // print closing brace
+            cout << endl << "}" << endl;
             break;
     }
 
-    // print initial brace
-    cout << "{" << endl;
 
-    // print the keys
-    cout << "\"keys\":[";
-    for (auto &key: keys) {
-        cout << "\"" << key << "\"";
-    }
-
-    // close the keys
-    cout << "]";
-
-    // recursively descend the tree printing out the children and their keys
-    cout << "\"children\":[";
-    for (auto &pointer: pointers) {
-        void *nextNode = malloc(PAGE_SIZE);
-        ixFileHandle.getHandle().readPage(pointer, nextNode);
-        printNode(nextNode, ixFileHandle, attribute);
-    }
-
-    // print closing brace
-    cout << endl << "}" << endl;
-
-    // refresh the keys vector
-    keys.clear();
-    pointers.clear();
 }
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
@@ -928,7 +953,7 @@ RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Att
 
         // create and append the rid string to the return key
         int counter = 0;
-        returnKey += "[";
+        returnKey += ":[";
 
         for (int i = 0; i < numberOfRids; i++) {
             string rid;
@@ -945,8 +970,8 @@ RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Att
 
             rid += "(" + std::to_string(pageNum) + "," + std::to_string(slotNum) + ")";
 
-
             ridString += rid;
+            counter++;
         }
 
         returnKey += ridString;
@@ -1063,10 +1088,10 @@ void IXFileHandle::setRightPointer(void *node, int rightPageNum) {
 }
 
 NodeType IXFileHandle::getNodeType(void *node) {
-    NodeType type;
+    byte type;
     memcpy(&type, (char *) node + NODE_TYPE, sizeof(byte));
 
-    return type;
+    return (NodeType)type;
 }
 
 void IXFileHandle::setNodeType(void *node, NodeType type) {
