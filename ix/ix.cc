@@ -358,7 +358,8 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 }
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
-    NodeType type;
+    int type;
+    memset(&type, 0, sizeof(int));
     memcpy(&type, (char*)data + NODE_TYPE, sizeof(byte));
 
     // Node type will be used to determine if they are <Key, ridlist> pairs or
