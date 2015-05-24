@@ -47,7 +47,7 @@ int testCase_5a(const string &indexFileName, const Attribute &attribute)
         assertInsertEntry(success, indexManager, ixfileHandle, attribute, &key, rid);
     }
 
-    for(unsigned i = value; i < numOfTuples+numOfMoreTuples; i++)
+    for(unsigned i = value; i < value + numOfMoreTuples; i++)
     {
         key = i;
         rid.pageNum = key;

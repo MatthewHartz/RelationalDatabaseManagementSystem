@@ -49,17 +49,17 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
             return -1;
         }
     } else {
-        ixFileHandle.getHandle().readPage(0, data);
+        ixFileHandle.getHandle()->readPage(0, data);
     }
 
     ixFileHandle.setRoot(data);
-    ixFileHandle.getHandle().currentPageNum = 0; // Fix to compensate for close/open file
+    ixFileHandle.getHandle()->currentPageNum = 0; // Fix to compensate for close/open file
     return 0;
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
-    FileHandle* handle = &ixfileHandle.getHandle();
+    FileHandle* handle = ixfileHandle.getHandle();
     void *root =ixfileHandle.getRoot();
     handle->writePage(0, root);
     if (pfm->closeFile(*handle) == -1) return -1;
@@ -97,19 +97,19 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             // Initialize Left Pointer
             int leftPointerNum = ixFileHandle.getAvailablePageNumber();
             ixFileHandle.initializeNewNode(leftPointerData, TypeLeaf);
-            ixFileHandle.getHandle().appendPage(leftPointerData);
-            ixFileHandle.getHandle().readPage(leftPointerNum, leftPointerData);  // REMOVE THIS IF WORKS
+            ixFileHandle.getHandle()->appendPage(leftPointerData);
+            ixFileHandle.getHandle()->readPage(leftPointerNum, leftPointerData);  // REMOVE THIS IF WORKS
 
             // Initialize Right Pointer
             int rightPointerNum = ixFileHandle.getAvailablePageNumber();
             ixFileHandle.initializeNewNode(rightPointerData, TypeLeaf);
-            ixFileHandle.getHandle().appendPage(rightPointerData);
+            ixFileHandle.getHandle()->appendPage(rightPointerData);
 
             // Link left pointer to right pointer
             ixFileHandle.setRightPointer(leftPointerData, rightPointerNum);
 
             // Link left page to data (I realize this is an additional (write/append, but it will only happen 1, ever, so who cares ahha)
-            ixFileHandle.getHandle().writePage(leftPointerNum, leftPointerData);
+            ixFileHandle.getHandle()->writePage(leftPointerNum, leftPointerData);
 
             // Write left, key, right data to the parent page
             int offSet = 0;
@@ -155,7 +155,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     }
      
     // write the node to file
-    if(ixFileHandle.getHandle().writePage(childPageNum, child) == -1) {
+    if(ixFileHandle.getHandle()->writePage(childPageNum, child) == -1) {
         return -1;
     }
     return 0;
@@ -206,7 +206,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     }
 
     // write the node to file
-    if(ixFileHandle.getHandle().writePage(childPageNum, child) == -1) {
+    if(ixFileHandle.getHandle()->writePage(childPageNum, child) == -1) {
         return -1;
     }
 
@@ -221,6 +221,12 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         bool        	highKeyInclusive,
         IX_ScanIterator &ix_ScanIterator)
 {
+    // need to test and see if the ixFileHandle is valid
+    if (ixfileHandle.getHandle() == NULL) {
+        return -1;
+    }
+
+
     // save the information needed to do a range based scan
     ix_ScanIterator.setHandle(ixfileHandle);
     ix_ScanIterator.setAttribute(attribute);
@@ -342,7 +348,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
             for (auto &pointer: pointers) {
                 if (counter > 0) cout << ",";
                 void *nextNode = malloc(PAGE_SIZE);
-                ixFileHandle.getHandle().readPage(pointer, nextNode);
+                ixFileHandle.getHandle()->readPage(pointer, nextNode);
                 printNode(nextNode, ixFileHandle, attribute, depth + 1);
 
                 counter++;
@@ -420,7 +426,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
                 // if this is true go left
                 if (cKey < directorKey || rightPage == 0) {
                     child = malloc(PAGE_SIZE);
-                    ixfileHandle.getHandle().readPage(leftPage, child);
+                    ixfileHandle.getHandle()->readPage(leftPage, child);
                     return 0;
                 } 
                 counter++;
@@ -522,11 +528,11 @@ RC IndexManager::splitChild(void* child, void *parent
                 return -1;
             }
             // here we have write the parent to file
-            ixFileHandle.getHandle().writePage(parentPageNum, parent);
+            ixFileHandle.getHandle()->writePage(parentPageNum, parent);
 
             // I think here we need to write to write our pages to file for all pages
-            ixFileHandle.getHandle().writePage(childPageNum, child);
-            ixFileHandle.getHandle().writePage(rightPageNum, rightPage);
+            ixFileHandle.getHandle()->writePage(childPageNum, child);
+            ixFileHandle.getHandle()->writePage(rightPageNum, rightPage);
 
             break;
     }
@@ -1132,7 +1138,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         if (currentLeafOffset >= freeSpaceOffset) {
             nextPageNum = ixFileHandle->getRightPointer(leafNode);
             if (nextPageNum == 0) return IX_EOF;
-            ixFileHandle->getHandle().readPage(nextPageNum, leafNode);
+            ixFileHandle->getHandle()->readPage(nextPageNum, leafNode);
             freeSpace = IXFileHandle::getFreeSpace(leafNode);
             freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
         }

@@ -25,7 +25,7 @@ int testCase_6A(const string &indexFileName, const Attribute &attribute)
     IXFileHandle ixfileHandle;
     IX_ScanIterator ix_ScanIterator;
     unsigned key = 200;
-    unsigned numOfTuples = 512;
+    unsigned numOfTuples = 50;
 
     int inRidPageNumSum = 0;
     int outRidPageNumSum = 0;
@@ -65,12 +65,6 @@ int testCase_6A(const string &indexFileName, const Attribute &attribute)
 
     // Close Scan
     assertCloseIterator(success, ix_ScanIterator);
-
-    // Close Index
-    assertCloseIndexFile(success, indexManager, ixfileHandle);
-
-    // destroy index file
-    assertDestroyIndexFile(success, indexManager, indexFileName);
 
     return success;
 

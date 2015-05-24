@@ -163,13 +163,13 @@ class IXFileHandle {
         IXFileHandle();  							// Constructor
         ~IXFileHandle(); 							// Destructor
 
-        FileHandle &getHandle() { return *this->handle; };
+        FileHandle* getHandle() { return handle; };
         void setHandle(FileHandle &h) { handle = &h; };
         void setRoot(void *data) { handle->currentPage = data; };
         void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
         void setNodeType(void *node, NodeType type);
         void* getRoot() { return handle->currentPage; };
-        RC getNode(int pageNum, void *node) { return getHandle().readPage(pageNum, node); };
+        RC getNode(int pageNum, void *node) { return getHandle()->readPage(pageNum, node); };
         int getRightPointer(void *node);
         void setRightPointer(void *node, int rightPageNum);
         int initializeNewNode(void *data, NodeType type); // Initializes a new node, setting it's free space and node type

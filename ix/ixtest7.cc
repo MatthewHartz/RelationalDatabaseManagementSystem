@@ -121,6 +121,7 @@ int testCase_LargeDataSet(const string &indexFileName, const Attribute &attribut
     // Close Index
     assertCloseIndexFile(success, indexManager, ixfileHandle);
 
+    assertDestroyIndexFile(success, indexManager, indexFileName);
     return success;
 }
 

@@ -34,7 +34,7 @@ int testCase_4B(const string &indexFileName, const Attribute &attribute)
     // compute inRidPageNumSum without inserting entries
     for(unsigned i = 0; i <= numOfTuples; i++)
     {
-        key = i+1;
+        key = i;
         rid.pageNum = key;
         rid.slotNum = key+1;
 
