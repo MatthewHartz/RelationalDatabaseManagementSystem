@@ -1139,6 +1139,8 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset + sizeof(int), leafNode);
             break;
         }
+        // we need to advance the offset
+        currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset + sizeof(int), leafNode);
         
         // if we don't break then we continue searching until we reach the end of 
         // the index
