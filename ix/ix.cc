@@ -133,7 +133,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
                 
         // test if leaf node
-        if (ixFileHandle.getNodeType(child) == TypeLeaf) {
+        NodeType type = ixFileHandle.getNodeType(child);
+        if (type != TypeRoot || type != TypeNode) {
             // do we maybe need to  check for enough space here? and then split?
             break;
         }
@@ -1413,28 +1414,28 @@ void IXFileHandle::setRightPointer(void *node, int rightPageNum) {
 }
 
 NodeType IXFileHandle::getNodeType(void *node) {
-    byte type;
-    memcpy(&type, (char *) node + NODE_TYPE, sizeof(byte));
+    NodeType type;
+    memcpy(&type, (char *) node + NODE_TYPE, sizeof(int));
 
-    return (NodeType)type;
+    return type;
 }
 
 void IXFileHandle::setNodeType(void *node, NodeType type) {
-    byte nodeType;
-    switch (type) {
-        case TypeNode:
-            nodeType = 0;
-            break;
-        case TypeLeaf:
-            nodeType = 1;
-            break;
-        case TypeRoot:
-            nodeType = 2;
-            break;
-    }
+//    byte nodeType;
+//    switch (type) {
+//        case TypeNode:
+//            nodeType = 0;
+//            break;
+//        case TypeLeaf:
+//            nodeType = 1;
+//            break;
+//        case TypeRoot:
+//            nodeType = 2;
+//            break;
+//    }
 
     // initializes the node type slot with node type
-    memcpy((char*)node + NODE_TYPE, &nodeType, sizeof(int));
+    memcpy((char*)node + NODE_TYPE, &type, sizeof(int));
 }
 
 void IXFileHandle::writeNode(int pageNumber, void* data) {
