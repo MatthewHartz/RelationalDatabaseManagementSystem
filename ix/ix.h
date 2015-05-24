@@ -164,7 +164,7 @@ class IXFileHandle {
         ~IXFileHandle(); 							// Destructor
 
         FileHandle* getHandle() { return handle; };
-        void setHandle(FileHandle &h) { handle = &h; };
+        void setHandle(FileHandle *h) { handle = h; };
         void setRoot(void *data) { handle->currentPage = data; };
         void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
         void setNodeType(void *node, NodeType type);

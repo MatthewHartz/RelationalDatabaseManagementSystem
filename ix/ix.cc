@@ -36,7 +36,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixFileHandle)
     void *data = malloc(PAGE_SIZE);
     // open file
     if (pfm->openFile(fileName, *handle) == -1) return -1;
-    ixFileHandle.setHandle(*handle);
+    ixFileHandle.setHandle(handle);
 
     // append the root page if the file is empty
     if (handle->numPages == 0) {
@@ -73,8 +73,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // extract root
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
-    int childPageNum;
-    int parentPageNum;
+    int childPageNum = 0;
+    int parentPageNum = 0;
     
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
@@ -366,27 +366,40 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 }
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
-    int type;
-    memset(&type, 0, sizeof(int));
+    int type, freeSpace;
     memcpy(&type, (char*)data + NODE_TYPE, sizeof(byte));
+    memcpy(&freeSpace, (char*) data + NODE_FREE, sizeof(int));
 
     // Node type will be used to determine if they are <Key, ridlist> pairs or
     // <pointer, key, pointer> groups
 
-    int freeSpace;
-    memcpy(&freeSpace, (char*)data + NODE_FREE, sizeof(int));
+    int entrySize;
 
     switch(type) {
         case TypeRoot:
         case TypeNode:
+            // Key + pointer
+            if (attribute.type == TypeVarChar) {
+                int key = sizeof(int) + attribute.length;
+                entrySize = key + sizeof(int);
+            } else {
+                entrySize = sizeof(int) + sizeof(int);
+            }
             break;
         case TypeLeaf:
+            // Key + Number of Rids + First Entry into rid list
+            if (attribute.type == TypeVarChar) {
+                int key = sizeof(int) + attribute.length;
+                entrySize = key + sizeof(int) + RID_SIZE;
+            } else {
+                entrySize = sizeof(int) + sizeof(int) + RID_SIZE;
+            }
             break;
         default:
             return false;
     }
 
-    return true;
+    return freeSpace >=  entrySize;
 }
 
 RC IndexManager::getNextNodeByKey(void * &child, void * &parent
@@ -1350,6 +1363,9 @@ RC IX_ScanIterator::close()
 
 IXFileHandle::IXFileHandle()
 {
+    FileHandle* handle = NULL;
+
+    setHandle(handle);
 }
 
 IXFileHandle::~IXFileHandle()
