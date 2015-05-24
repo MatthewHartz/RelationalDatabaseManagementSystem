@@ -219,7 +219,65 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         bool        	highKeyInclusive,
         IX_ScanIterator &ix_ScanIterator)
 {
-    return -1;
+    // save the information needed to do a range based scan
+    ix_ScanIterator.setHandle(ixfileHandle);
+    ix_ScanIterator.setAttribute(attribute);
+    ix_ScanIterator.setLowKeyValues(lowKey, lowKeyInclusive);
+    ix_ScanIterator.setHighKeyValues(highKey, highKeyInclusive);
+
+    // we need to save the first leaf node in the tree to begin a scan
+    void *root = ixfileHandle.getRoot();
+    void *parentNode = NULL;
+    void *searchNode = malloc(PAGE_SIZE);
+    memcpy((char *) searchNode, (char *) root, PAGE_SIZE);
+    int searchPageNum, searchOffset = 0;
+    int parentPage;
+
+    // find the first leaf node that contains the lowKey
+    if (lowKey == NULL) {
+        while(ixfileHandle.getNodeType(searchNode) != TypeLeaf) {
+            // test the left node, if its null increase the offset and go right
+            // not having a left node will only happen if the left node is dead (deleted)
+            if(!ixfileHandle.isLeftNodeNull(searchNode, searchOffset, searchPageNum)) {
+                ixfileHandle.getNode(searchPageNum, searchNode);
+            } else if (!ixfileHandle.isRightNodeNull(searchNode, attribute, searchOffset, searchPageNum)) {
+                ixfileHandle.getNode(searchPageNum, searchNode);  
+            } else {
+                // this should not happen
+            }
+        }
+
+        // once we have found our left-most leaf we need to save it to the scanner
+        ix_ScanIterator.setLeafNode(searchNode);
+    } else {
+        // find the leaf node where the lowKey is located, we'll let geNextEntry() worry about inclusive
+        while(ixfileHandle.getNodeType(searchNode) != TypeLeaf) {
+            if(getNextNodeByKey(searchNode, parentNode, lowKey, attribute, ixfileHandle, searchPageNum, parentPage)) {
+                return -1;
+            }
+        }
+        ix_ScanIterator.setLeafNode(searchNode);
+    }
+
+    // let's set our type and functions
+    switch(attribute.type) {
+        case TypeInt:
+            ix_ScanIterator.setType(ix_ScanIterator.getIntType);
+            ix_ScanIterator.setFunc(ix_ScanIterator.compareInts);
+            break;
+        case TypeReal:
+            ix_ScanIterator.setType(ix_ScanIterator.getRealType);
+            ix_ScanIterator.setFunc(ix_ScanIterator.compareReals);
+            break;
+        case TypeVarChar:
+            ix_ScanIterator.setType(ix_ScanIterator.getVarCharType);
+            ix_ScanIterator.setFunc(ix_ScanIterator.compareVarChars);
+            break;
+        default:
+            break;
+
+    }
+    return 0;
 }
 
 void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
@@ -596,8 +654,8 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     int nextKeyOffset = 0;
     int newDataOffset = 0;
     int sizeOfNewData, sizeOfShiftedData;
-    void *newData;
-    void *shiftedData;
+    void *newData = NULL;
+    void *shiftedData = NULL;
 
     // first we need to determine what type of attribute we have
     switch(attribute.type) {
@@ -684,6 +742,11 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
 
             // update freespace
             ixFileHandle.setFreeSpace(child, freeSpace - sizeOfNewData);
+
+            // free memory
+            if (newData != NULL) free(newData);
+            if (shiftedData != NULL) free(shiftedData);
+            
             return 0;
         case TypeReal:
             // do work for a float
@@ -1039,21 +1102,134 @@ RC IndexManager::getKeysInNonLeaf(IXFileHandle &ixFileHandle
 
 IX_ScanIterator::IX_ScanIterator()
 {
+    ixFileHandle = NULL;
+    leafNode = malloc(PAGE_SIZE);
+    currentLeafOffset = 0;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
 {
+    if (leafNode != NULL) {
+        free(leafNode);
+    }
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    return -1;
+    // extract freeSpace and calculate the freeSpaceOffset 
+    int freeSpace = IXFileHandle::getFreeSpace(leafNode);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+    int nextPageNum;
+
+    // loop until we no longer satisfy the range
+    while(true) {
+        // if we are at the end of a page go to the next one
+        if (currentLeafOffset >= freeSpaceOffset) {
+            nextPageNum = ixFileHandle->getRightPointer(leafNode);
+            if (nextPageNum == 0) return IX_EOF;
+            ixFileHandle->getHandle().readPage(nextPageNum, leafNode);
+        }
+
+        // get the type and the compare
+        (*getKey)(key, leafNode, currentLeafOffset);
+
+        // compare and and evaluate the return type
+        if((*compareTypeFunc)(key, lowKey, highKey, leafNode, currentLeafOffset, lowKeyInclusive, highKeyInclusive)) {
+            currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset + sizeof(int), leafNode);
+            break;
+        }
+        
+        // if we don't break then we continue searching until we reach the end of 
+        // the index
+    }
+    return 0;
+}
+
+void* IX_ScanIterator::getIntType(void *&type, void *node, int offset) {
+    if (type == NULL) { 
+        type = malloc(sizeof(int));
+    }
+    memcpy((char *) type, (char *) node + offset, sizeof(int));
+}
+
+void* IX_ScanIterator::getRealType(void *&type, void *node, int offset) {
+    if (type == NULL) {
+        type = malloc(sizeof(double));
+    }
+    memcpy((char *) type, (char *) node + offset, sizeof(int));
+}
+
+void* IX_ScanIterator::getVarCharType(void *&type, void *node, int offset) {
+    int varCharLength;
+    memcpy(&varCharLength, (char *) node + offset, sizeof(int));
+    if (type == NULL) {
+        type = malloc(sizeof(int) + varCharLength);
+    }
+    memcpy((char *) type, (char *) node + offset, sizeof(int));
+    offset += sizeof(int);
+    memcpy((char *) type + sizeof(int), (char *) node + offset, sizeof(int));
+}
+
+bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
+                                                    , const void *high
+                                                    , void *node
+                                                    , int offset
+                                                    , bool lowInc
+                                                    , bool highInc) {
+    // let's extact the leaf, low and high keys to compare
+    int leafKey, lKey, hKey;
+    memcpy(&leafKey, (char *) node + offset, sizeof(int));
+    if (low != NULL) memcpy(&lKey, (char *) low, sizeof(int));
+    if (high != NULL) memcpy(&hKey, (char *) high, sizeof(int));
+
+    // now we can test our comparisons
+    if (low != NULL && high != NULL) {
+        if (!lowInc && !highInc) {
+            return leafKey > lKey && leafKey < hKey;
+        } else if (!lowInc && highInc) {
+            return leafKey > lKey && leafKey<= hKey;
+        } else if (lowInc && !highInc) {
+            return leafKey >= lKey && leafKey < hKey;
+        } else {
+            return leafKey >= lKey && leafKey <= hKey;
+        }
+    } else if (low == NULL && high != NULL) {
+        if (highInc) {
+            return hKey >= leafKey;
+        } else {
+            return hKey > leafKey;
+        }
+    } else if (low != NULL && high == NULL) {
+        if (lowInc) {
+            return lKey <= leafKey;
+        } else {
+            return lKey < leafKey;
+        }
+    } else {
+        // this just means return everything
+        return true;
+    } 
+
+}
+
+
+bool IX_ScanIterator::compareReals(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc) {
+
+
+}
+
+bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc) {
+
+
 }
 
 RC IX_ScanIterator::close()
 {
     return -1;
 }
+
+// helper functions for each type
+
 
 
 IXFileHandle::IXFileHandle()
@@ -1126,6 +1302,35 @@ int IXFileHandle::getRightPointer(void *data) {
     return right;
 }
 
+bool IXFileHandle::isLeftNodeNull(void *node, int offset, int &childPageNum) {
+    memcpy(&childPageNum, (char *) node + offset, sizeof(int));
+    return !childPageNum ? true : false;
+}
+
+bool IXFileHandle::isRightNodeNull(void *node, const Attribute &attribute, int offset, int &childPageNum) {
+    int directorLength;
+    if (attribute.type == TypeVarChar) {
+        memcpy(&directorLength, (char *) node + offset, sizeof(int));
+        offset += sizeof(int) + directorLength; 
+    } else {
+        offset += sizeof(int);
+    }
+    memcpy(&childPageNum, (char *) node + offset, sizeof(int));
+    return !childPageNum ? true : false;
+}
+
+void IX_ScanIterator::setLowKeyValues(const void *lowK, bool lowKInc) {
+    lowKey = lowK;
+    lowKeyInclusive = lowKInc;
+}
+
+
+void IX_ScanIterator::setHighKeyValues(const void *highK, bool highKInc) {
+    highKey = highK;
+    highKeyInclusive = highKInc;
+}
+
+
 int IXFileHandle::getAvailablePageNumber() {
     // If there is a page open in freePages use one of those first to reduce File size
     if (this->freePages.size() != 0) {
@@ -1140,5 +1345,7 @@ int IXFileHandle::getAvailablePageNumber() {
 
 void IX_PrintError (RC rc)
 {
+
+ 
    
 }
