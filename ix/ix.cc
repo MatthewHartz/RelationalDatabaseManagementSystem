@@ -201,7 +201,9 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     }
 
     // Remove node from leaf
-    deleteFromLeaf(ixFileHandle, child, key, attribute, rid);
+    if (deleteFromLeaf(ixFileHandle, child, key, attribute, rid) == -1) {
+        return -1;
+    }
 
     // write the node to file
     if(ixFileHandle.getHandle().writePage(childPageNum, child) == -1) {
@@ -787,6 +789,10 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
     // Iterate over keys
     int keyLength;
     void *comparisonKey;
+
+    // page is empty, therefore return -1
+    if (nextKeyOffset == freeSpaceOffset) return -1;
+
     while (nextKeyOffset < freeSpaceOffset) {
         memcpy(&keyLength, (char*)child + nextKeyOffset, keyLengthSize);
         // Tease out the key from the node
