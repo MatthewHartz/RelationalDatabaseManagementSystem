@@ -128,15 +128,18 @@ class IX_ScanIterator {
         void setLowKeyValues(const void *lowKey, bool lowKeyInclusive);
         void setHighKeyValues(const void *highKey, bool highKeyInclusive);
         void setLeafNode(void *node) { memcpy((char *) leafNode, (char *) node, PAGE_SIZE); };
-        void setType(void (*f)(void*&, RID&, void*, int)) { getKey = f; };
+        void setType(void (*f)(void*&, RID&, void*, int&)) { getKey = f; };
         void setFunc(bool (*f)(void*, const void*, const void*, void*, int, bool, bool)) { compareTypeFunc = f; };
         void setLeafOffset(int newOffset) { currentLeafOffset = newOffset; };
+        void setKeyRids(vector<RID> rids) { keyRids = rids; };
+        void setKeyIndex(int index) { keyIndex = index; };
         int getLeafOffset() { return currentLeafOffset; };
+        RID getNextRid();
 
         // static functions used to extract types
-        static void getIntType(void *&type, RID &rid, void *node, int offset);
-        static void getRealType(void *&type, RID &rid, void *node, int offset);
-        static void getVarCharType(void *&type, RID &rid, void *node, int offset); 
+        static void getIntType(void *&type, RID &rid, void *node, int &offset);
+        static void getRealType(void *&type, RID &rid, void *node, int &offset);
+        static void getVarCharType(void *&type, RID &rid, void *node, int &offset);
         static bool compareInts(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc);
         static bool compareReals(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc);
         static bool compareVarChars(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc);
@@ -150,8 +153,10 @@ class IX_ScanIterator {
         bool lowKeyInclusive;
         bool highKeyInclusive;
         int currentLeafOffset;
-        void (*getKey)(void*&, RID&, void*, int);
+        void (*getKey)(void*&, RID&, void*, int&);
         bool (*compareTypeFunc)(void*, const void*, const void*, void*, int, bool, bool); 
+        vector<RID> keyRids; // this is iterated for single or multiple rids for a key
+        int keyIndex; // this is reset to 0 when a new key is discovered
 };
 
 

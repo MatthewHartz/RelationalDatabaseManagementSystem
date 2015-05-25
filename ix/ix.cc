@@ -694,7 +694,8 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     int newOffset = 0;
     int nextKeyOffset = 0;
     int newDataOffset = 0;
-    int sizeOfNewData, sizeOfShiftedData = 0;
+    int sizeOfNewData = 0;
+    int sizeOfShiftedData = 0;
     void *newData = NULL;
     void *shiftedData = NULL;
 
@@ -750,14 +751,14 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             sizeOfNewData = RID_SIZE;
 
             // get the offset of the last RID in the list
-            int numberOfRIDs = getNumberOfRids(child, nextKeyOffset + sizeof(int));
+            int numberOfRIDs = getNumberOfRids(child, nextKeyOffset);
 
             // get the offset of the last RID in the list
-            newOffset = nextKeyOffset + (2 * sizeof(int)) + (numberOfRIDs * RID_SIZE);
+            newOffset = nextKeyOffset + sizeof(int) + (numberOfRIDs * RID_SIZE);
 
             // update the number of RIDs in key
             numberOfRIDs += 1;
-            memcpy((char*)child + (nextKeyOffset + sizeof(int)), &numberOfRIDs, sizeof(int));
+            memcpy((char*)child + nextKeyOffset, &numberOfRIDs, sizeof(int));
 
             // calculate the data that will be shifted to the right
             sizeOfShiftedData = freeSpaceOffset - newOffset;
@@ -1194,6 +1195,7 @@ IX_ScanIterator::IX_ScanIterator()
     ixFileHandle = NULL;
     leafNode = malloc(PAGE_SIZE);
     currentLeafOffset = 0;
+    keyIndex = 0;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
@@ -1210,7 +1212,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     // loop until we no longer satisfy the range
     while(true) {
         // if we are at the end of a page go to the next one
-        if (currentLeafOffset >= freeSpaceOffset) {
+        if (currentLeafOffset >= freeSpaceOffset && keyIndex == keyRids.size()) {
             nextPageNum = ixFileHandle->getRightPointer(leafNode);
             if (nextPageNum == 0) return IX_EOF;
             ixFileHandle->getHandle()->readPage(nextPageNum, leafNode);
@@ -1219,16 +1221,49 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             currentLeafOffset = 0;
         }
 
+        // if there is a RID at position keyIndex, return that rid
+        if (keyIndex < keyRids.size()) {
+            RID nextRid = getNextRid();
+            rid.pageNum = nextRid.pageNum;
+            rid.slotNum = nextRid.slotNum;
+
+            keyIndex++;
+            return 0;
+        }
+
+        // set index to 0 and clear the keyRids
+        setKeyIndex(0);
+        keyRids.clear();
+
         // get the type and the compare
+        int keyOffset = currentLeafOffset;
         (*getKey)(key, rid, leafNode, currentLeafOffset);
 
         // compare and and evaluate the return type
-        if((*compareTypeFunc)(key, lowKey, highKey, leafNode, currentLeafOffset, lowKeyInclusive, highKeyInclusive)) {
-            currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset + sizeof(int), leafNode);
+        if((*compareTypeFunc)(key, lowKey, highKey, leafNode, keyOffset, lowKeyInclusive, highKeyInclusive)) {
+            // build the RID list
+            int numRids;
+            memcpy(&numRids, (char*)leafNode + currentLeafOffset, sizeof(int));
+            currentLeafOffset += sizeof(int);
+
+            for (int i = 0; i < numRids; i++) {
+                RID temp;
+                memcpy(&temp.pageNum, (char*)leafNode + currentLeafOffset, sizeof(int));
+                currentLeafOffset += sizeof(int);
+                memcpy(&temp.slotNum, (char*)leafNode + currentLeafOffset, sizeof(int));
+                currentLeafOffset += sizeof(int);
+
+                keyRids.push_back(temp);
+            }
+
+            rid.pageNum = keyRids[0].pageNum;
+            rid.slotNum = keyRids[0].slotNum;
+
+            keyIndex++;
             break;
         }
         // we need to advance the offset
-        currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset + sizeof(int), leafNode);
+        currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset, leafNode);
         
         // if we don't break then we continue searching until we reach the end of 
         // the index
@@ -1236,35 +1271,23 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     return 0;
 }
 
-void IX_ScanIterator::getIntType(void *&type, RID &rid, void *node, int offset) {
+void IX_ScanIterator::getIntType(void *&type, RID &rid, void *node, int &offset) {
     if (type == NULL) { 
         type = malloc(sizeof(int));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
-    offset += 2 * sizeof(int);
-
-    // TODO: how to return multiple RID's for duplicates
-    memcpy(&rid.pageNum, (char *) node + offset, sizeof(int));
     offset += sizeof(int);
-    memcpy(&rid.slotNum, (char *) node + offset, sizeof(int));
-
 }
 
-void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int offset) {
+void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int &offset) {
     if (type == NULL) {
         type = malloc(sizeof(float));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(float));
     offset += sizeof(float);
-
-    // TODO: how to return multiple RID's for duplicates
-    memcpy(&rid.pageNum, (char *) node + offset, sizeof(int));
-    offset += sizeof(int);
-    memcpy(&rid.slotNum, (char *) node + offset, sizeof(int));
-    offset += sizeof(int);
 }
 
-void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int offset) {
+void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int &offset) {
     int varCharLength;
     memcpy(&varCharLength, (char *) node + offset, sizeof(int));
     if (type == NULL) {
@@ -1428,6 +1451,10 @@ bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
         return true;
     } 
     }
+
+RID IX_ScanIterator::getNextRid() {
+    return keyRids[keyIndex];
+}
 
 RC IX_ScanIterator::close()
 {
