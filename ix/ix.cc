@@ -421,46 +421,41 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
     child = NULL;
     parentPageNum = leftPageNum;
     int offset = 0;
+
+    // extract the key to compare to
+    int cKey;
+    memcpy(&cKey, (char *) key, sizeof(int));
+
+    void *directorKey;
+    int leftPage, rightPage;
+
+    // iterate through each director key
     int counter = 0;
+    while (getDirectorAtOffset(offset, parent, leftPage, rightPage, directorKey, attribute) != -1) {
+        leftPageNum = leftPage;
 
-    switch(attribute.type) {
-        case TypeInt:
-        case TypeReal:
-            // extract the key to compare to
-            int cKey;
-            memcpy(&cKey, (char *) key, sizeof(int));
+        int comparisonResult = compareKeys(key, directorKey, attribute);
 
-            while(true) {
-                // directorPage is the page on the right
-                int leftPage, rightPage, directorKey;
-                memcpy(&leftPage, (char *) parent + offset, sizeof(int));
-                offset += sizeof(int);
-                memcpy(&directorKey, (char *) parent + offset, sizeof(int));
-                offset += sizeof(int);
-                memcpy(&rightPage, (char *) parent + offset, sizeof(int));
-                leftPageNum = leftPage;
-
-                // test if director page is zero AND its the first entry in a non-leaf node
-                if (rightPage == 0 && counter == 0) {
-                    return 0;
-                }
-
-                // if this is true go left
-                if (cKey < directorKey || rightPage == 0) {
-                    child = malloc(PAGE_SIZE);
-                    ixfileHandle.getHandle()->readPage(leftPage, child);
-                    return 0;
-                }
-                counter++;
-            }
-
+        // if key < the director key go left
+        if (comparisonResult == -1) {
+            child = malloc(PAGE_SIZE);
+            ixfileHandle.getHandle()->readPage(leftPage, child);
             return 0;
-        case TypeVarChar:
-            // compare strings
-            return -1;
-        default:
-            return -1;
+        }
+
+        counter++;
     }
+
+    // key is greater than the last director, therefore enter into the last page
+    if (counter != 0) {
+        child = malloc(PAGE_SIZE);
+        ixfileHandle.getHandle()->readPage(rightPage, child);
+        leftPageNum = rightPage;
+    }
+
+    // else is empty page
+
+    return 0;
 }
 
 RC IndexManager::splitChild(void* child, void *parent
@@ -488,6 +483,7 @@ RC IndexManager::splitChild(void* child, void *parent
     int nextDirectorOffset;
     int oldRootPageNum;
     int rootOffset = 0;
+    int directorSize;
 
     // Get node type
     NodeType nodeType = IXFileHandle::getNodeType(child);
@@ -515,7 +511,6 @@ RC IndexManager::splitChild(void* child, void *parent
                     return -1;
             }
             // here a directorSize is assumed to be the left page and the key only
-            int directorSize;
              while (currentDirectorOffset < freeSpaceOffset) {
                 memcpy(&keyLength, (char*)child + currentDirectorOffset, keyLengthSize);
                 // Tease out the key from the node
@@ -595,6 +590,80 @@ RC IndexManager::splitChild(void* child, void *parent
  
             break;
         case TypeNode:
+            switch (attribute.type) {
+                case TypeInt:
+                case TypeReal:
+                    keyLengthSize = 0;
+                    break;
+                case TypeVarChar:
+                    keyLengthSize = 4;
+                    break;
+                default:
+                    return -1;
+            }
+            // here a directorSize is assumed to be the left page and the key only
+             while (currentDirectorOffset < freeSpaceOffset) {
+                memcpy(&keyLength, (char*)child + currentDirectorOffset, keyLengthSize);
+                // Tease out the key from the node
+                if (keyLengthSize != 0) {
+                    directorSize = sizeof(int) + keyLength;
+                } else {
+                    directorSize = sizeof(int);
+                }
+                nextDirectorOffset = currentDirectorOffset + sizeof(int) + directorSize;
+
+                // FOUND SPLIT POINT
+                if (nextDirectorOffset >= SPLIT_THRESHOLD) {
+                    // determine which side to split on key
+                    if ((SPLIT_THRESHOLD - currentDirectorOffset)
+                            > (nextDirectorOffset - SPLIT_THRESHOLD)) {
+                        splitPosition = nextDirectorOffset;
+                    } else {
+                        splitPosition = currentDirectorOffset;
+                        memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
+                        directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
+                    }
+                    break;
+                }
+
+                currentDirectorOffset += sizeof(int) + directorSize;
+            }
+            // Initialize right page
+            rightPageNum = ixFileHandle.getAvailablePageNumber();
+            rightPage = malloc(PAGE_SIZE);
+            ixFileHandle.initializeNewNode(rightPage, TypeNode);
+
+            // Save copy data to right page
+            shiftedSize = freeSpaceOffset - splitPosition;
+            memcpy((char *) rightPage, (char *) child + splitPosition, shiftedSize);
+            ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) - shiftedSize);
+
+            // update the pointers
+            ixFileHandle.setRightPointer(rightPage, ixFileHandle.getRightPointer(child));
+            ixFileHandle.setRightPointer(child, rightPageNum);
+
+            // clear out the move data from left page
+            memset((char *) child + splitPosition, 0, shiftedSize);
+
+            // update freeSpace
+            ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
+
+            // update the parent with a new director, insertDirector will automatically update freespace
+            if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
+                return -1;
+            }
+
+            // here we have to append the new root to the file
+            ixFileHandle.writeNode(parentPageNum, parent);
+            ixFileHandle.setRoot(parent);
+            ixFileHandle.setRootPageNum(parentPageNum);
+
+            // I think here we need to write to write our pages to file for all pages
+            ixFileHandle.getHandle()->writePage(childPageNum, child);
+            ixFileHandle.getHandle()->appendPage(rightPage);
+
+            // free up the right page
+            free(rightPage);
             break;
         case TypeLeaf:
             // Save the number of bits for key length (this will be used to read in length size
@@ -698,11 +767,11 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
             int leftPage, rightPage, directorKey, comparisonKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
                 // test if director page is zero in order to break out
-                if (rightPage == 0) {
-                    //return 0;
-                    offset += sizeof(int);
-                    break;
-                }
+//                if (rightPage == 0) {
+//                    //return 0;
+//                    offset += sizeof(int);
+//                    break;
+//                }
 
                 // compare the keys
                 int comparisonResult = compareKeys(key, extractionKey, attribute);
@@ -712,7 +781,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
                     break;
                 }
 
-                offset += 8;
+                //offset += 8;
             }
             break;
         }
@@ -749,48 +818,56 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     return 0;
 }
 
-RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* &key, const Attribute &attribute) {
-    int off = offset;
+RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* &key, const Attribute &attribute) {
+    int freeSpace = IXFileHandle::getFreeSpace(node);
+    int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+
+    // page is empty (this is usually due to first insert
+    if (freeSpaceOffset == offset) {
+        return -1;
+    }
+
+    // no more keys left
+    if (freeSpaceOffset == offset + sizeof(int)) {
+        offset += sizeof(int);
+        return -1;
+    }
 
     switch(attribute.type) {
         case TypeInt:
             key = malloc(sizeof(int));
-            memcpy(&leftPointer, (char*) node + off, sizeof(int));
-            off += sizeof(int);
-            memcpy((char *) key, (char*) node + off, sizeof(int));
-            off += sizeof(int);
-            memcpy(&rightPointer, (char*) node + off, sizeof(int));
+            memcpy(&leftPointer, (char*) node + offset, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char *) key, (char*) node + offset, sizeof(int));
+            offset += sizeof(int);
+            memcpy(&rightPointer, (char*) node + offset, sizeof(int));
             break;
         case TypeReal:
             key = malloc(sizeof(int));
-            memcpy(&leftPointer, (char*) node + off, sizeof(int));
-            off += sizeof(int);
-            memcpy((char*)key, (char*) node + off, sizeof(float));
-            off += sizeof(float);
-            memcpy(&rightPointer, (char*) node + off, sizeof(int));
+            memcpy(&leftPointer, (char*) node + offset, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char*)key, (char*) node + offset, sizeof(float));
+            offset += sizeof(float);
+            memcpy(&rightPointer, (char*) node + offset, sizeof(int));
             break;
         case TypeVarChar:
-            memcpy(&leftPointer, (char*) node + off, sizeof(int));
-            off += sizeof(int);
+            memcpy(&leftPointer, (char*) node + offset, sizeof(int));
+            offset += sizeof(int);
 
             int length;
-            memcpy(&length, (char*) node + off, sizeof(int));
+            memcpy(&length, (char*) node + offset, sizeof(int));
 
             key = malloc(sizeof(int) + length);
-            memcpy((char*)key, (char*) node + off, sizeof(int));
-            off += sizeof(int);
+            memcpy((char*)key, (char*) node + offset, sizeof(int));
+            offset += sizeof(int);
 
-            memcpy(key, (char*) node + off, length);
-            off += length;
-            memcpy(&rightPointer, (char*) node + off, sizeof(int));
+            memcpy(key, (char*) node + offset, length);
+            offset += length;
+            memcpy(&rightPointer, (char*) node + offset, sizeof(int));
             break;
         default:
             return -1;
     }
-
-    // If left pointer == 0 return -1, this means there are no more directors
-    // in the node.
-    if (leftPointer == 0) return -1;
 
     return 0;
 }
@@ -1326,7 +1403,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         // if we are at the end of a page go to the next one
         if (currentLeafOffset >= freeSpaceOffset && keyIndex == keyRids.size()) {
             nextPageNum = ixFileHandle->getRightPointer(leafNode);
-            if (nextPageNum == 0) return IX_EOF;
+            if (nextPageNum == -1) return IX_EOF;
             ixFileHandle->getHandle()->readPage(nextPageNum, leafNode);
             freeSpace = IXFileHandle::getFreeSpace(leafNode);
             freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
@@ -1600,6 +1677,10 @@ int IXFileHandle::initializeNewNode(void *data, NodeType type) {
     // initializes the free space slot with the free space value
     int freeSpace = DEFAULT_FREE;
     memcpy((char*)data + NODE_FREE, &freeSpace, sizeof(int)); // node free (int) + node type (byte) = 5
+
+    // set right pointer to -1
+    int rightPointer = -1;
+    memcpy((char*)data + NODE_RIGHT, &rightPointer, sizeof(int));
 
     // sets the node type
     setNodeType(data, type);
