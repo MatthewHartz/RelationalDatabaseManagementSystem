@@ -694,7 +694,8 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     int newOffset = 0;
     int nextKeyOffset = 0;
     int newDataOffset = 0;
-    int sizeOfNewData, sizeOfShiftedData = 0;
+    int sizeOfNewData = 0;
+    int sizeOfShiftedData = 0;
     void *newData = NULL;
     void *shiftedData = NULL;
 
@@ -750,14 +751,14 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             sizeOfNewData = RID_SIZE;
 
             // get the offset of the last RID in the list
-            int numberOfRIDs = getNumberOfRids(child, nextKeyOffset + sizeof(int));
+            int numberOfRIDs = getNumberOfRids(child, nextKeyOffset);
 
             // get the offset of the last RID in the list
-            newOffset = nextKeyOffset + (2 * sizeof(int)) + (numberOfRIDs * RID_SIZE);
+            newOffset = nextKeyOffset + sizeof(int) + (numberOfRIDs * RID_SIZE);
 
             // update the number of RIDs in key
             numberOfRIDs += 1;
-            memcpy((char*)child + (nextKeyOffset + sizeof(int)), &numberOfRIDs, sizeof(int));
+            memcpy((char*)child + nextKeyOffset, &numberOfRIDs, sizeof(int));
 
             // calculate the data that will be shifted to the right
             sizeOfShiftedData = freeSpaceOffset - newOffset;
@@ -1255,7 +1256,7 @@ void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int offset)
         type = malloc(sizeof(float));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(float));
-    offset += sizeof(float);
+    offset += 2 * sizeof(float);
 
     // TODO: how to return multiple RID's for duplicates
     memcpy(&rid.pageNum, (char *) node + offset, sizeof(int));
