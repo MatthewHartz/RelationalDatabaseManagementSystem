@@ -81,7 +81,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         // Test if node is full (This is what makes top-down, top-down
         if(!hasEnoughSpace(child, attribute)) {
             // if not enough space we need to split
-            //splitChild();
+            splitChild(child, parent, attribute, ixFileHandle, key, childPageNum, parentPageNum);
+            return insertEntry(ixFileHandle, attribute, key, rid);
         }
 
         // if node == null then we need to create a leaf page
@@ -134,7 +135,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
         // test if leaf node
         NodeType type = ixFileHandle.getNodeType(child);
-        if (type != TypeRoot || type != TypeNode) {
+        if (type == TypeLeaf) {
             // do we maybe need to  check for enough space here? and then split?
             break;
         }
@@ -475,16 +476,128 @@ RC IndexManager::splitChild(void* child, void *parent
     int nextKeyOffset;
     int splitPosition;
 
+    int keyLengthSize;
+    int keyLength; // length that describes how many chars in a varchar for example
+    int keySize;
+    int rightPageNum;
+    void *rightPage = NULL; 
+    int shiftedSize;
+
+    // variables for non-leaf nodes
+    int currentDirectorOffset = 0;
+    int nextDirectorOffset;
+    int oldRootPageNum;
+    int rootOffset = 0;
+
     // Get node type
     NodeType nodeType = IXFileHandle::getNodeType(child);
 
     switch (nodeType) {
         case TypeRoot:
+            // create a new root node
+            parentPageNum = ixFileHandle.getAvailablePageNumber();
+            parent = malloc(PAGE_SIZE);
+            ixFileHandle.initializeNewNode(parent, TypeRoot);
+            
+            // in order for getAvailablePageNumber() to work on the right page 
+            // we need to append the new root now
+            ixFileHandle.getHandle()->appendPage(parent);
+
+            switch (attribute.type) {
+                case TypeInt:
+                case TypeReal:
+                    keyLengthSize = 0;
+                    break;
+                case TypeVarChar:
+                    keyLengthSize = 4;
+                    break;
+                default:
+                    return -1;
+            }
+            // here a directorSize is assumed to be the left page and the key only
+            int directorSize;
+             while (currentDirectorOffset < freeSpaceOffset) {
+                memcpy(&keyLength, (char*)child + currentDirectorOffset, keyLengthSize);
+                // Tease out the key from the node
+                if (keyLengthSize != 0) {
+                    directorSize = sizeof(int) + keyLength;
+                } else {
+                    directorSize = sizeof(int);
+                }
+                nextDirectorOffset = currentDirectorOffset + sizeof(int) + directorSize; 
+
+                // FOUND SPLIT POINT
+                if (nextDirectorOffset >= SPLIT_THRESHOLD) {
+                    // determine which side to split on key
+                    if ((SPLIT_THRESHOLD - currentDirectorOffset)
+                            > (nextDirectorOffset - SPLIT_THRESHOLD)) {
+                        splitPosition = nextDirectorOffset;
+                    } else {
+                        splitPosition = currentDirectorOffset;
+                        memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
+                        directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
+                    }
+                    break;
+                }
+
+                currentDirectorOffset += sizeof(int) + directorSize;
+            }
+            // Initialize right page
+            rightPageNum = ixFileHandle.getAvailablePageNumber();
+            rightPage = malloc(PAGE_SIZE);
+            ixFileHandle.initializeNewNode(rightPage, TypeNode);
+
+            // Save copy data to right page
+            shiftedSize = freeSpaceOffset - splitPosition;
+            memcpy((char *) rightPage, (char *) child + splitPosition, shiftedSize);
+            ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) - shiftedSize);
+
+            // update the pointers
+            ixFileHandle.setRightPointer(rightPage, ixFileHandle.getRightPointer(child));
+            ixFileHandle.setRightPointer(child, rightPageNum);
+
+            // clear out the move data from left page
+            memset((char *) child + splitPosition, 0, shiftedSize);
+
+            // update freeSpace
+            ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
+
+            // update the parent with a new director, insertDirector will automatically update freespace
+            oldRootPageNum = ixFileHandle.getRootPageNum();
+            memcpy((char *) parent + rootOffset, &oldRootPageNum, sizeof(int));
+            rootOffset += sizeof(int);
+
+            // insert the directorKey into the new root
+            memcpy((char *) parent + rootOffset, (char *) rightPage + sizeof(int), directorSize); 
+            rootOffset += directorSize;
+
+            // here we insert the right page num and increment the offset
+            memcpy((char *) parent + rootOffset, &rightPageNum, sizeof(int));
+            rootOffset += sizeof(int);
+
+            // update the free space
+            ixFileHandle.setFreeSpace(parent, DEFAULT_FREE - rootOffset);
+
+            // here we have to append the new root to the file
+            ixFileHandle.writeNode(parentPageNum, parent);
+            ixFileHandle.setRoot(parent);
+            ixFileHandle.setRootPageNum(parentPageNum);
+
+            // before we right the left page we need to change it from roottype to nodetype
+            ixFileHandle.setNodeType(child, TypeNode);
+
+            // I think here we need to write to write our pages to file for all pages
+            ixFileHandle.getHandle()->writePage(childPageNum, child);
+            ixFileHandle.getHandle()->appendPage(rightPage);
+
+            // free up the right page
+            free(rightPage);
+ 
+            break;
         case TypeNode:
             break;
         case TypeLeaf:
             // Save the number of bits for key length (this will be used to read in length size
-            int keyLengthSize;
             switch (attribute.type) {
                 case TypeInt:
                 case TypeReal:
@@ -498,8 +611,7 @@ RC IndexManager::splitChild(void* child, void *parent
             }
 
             // Iterate over keys
-            int keyLength; // length that describes how many chars in a varchar for example
-            int keySize;
+
 
             while (currentKeyOffset < freeSpaceOffset) {
                 memcpy(&keyLength, (char*)child + currentKeyOffset, keyLengthSize);
@@ -526,12 +638,12 @@ RC IndexManager::splitChild(void* child, void *parent
             }
 
             // Initialize right page
-            int rightPageNum = ixFileHandle.getAvailablePageNumber();
-            void *rightPage = malloc(PAGE_SIZE);
+            rightPageNum = ixFileHandle.getAvailablePageNumber();
+            rightPage = malloc(PAGE_SIZE);
             ixFileHandle.initializeNewNode(rightPage, TypeLeaf);
 
             // Save copy data to right page
-            int shiftedSize = freeSpaceOffset - splitPosition;
+            shiftedSize = freeSpaceOffset - splitPosition;
             memcpy((char *) rightPage, (char *) child + splitPosition, shiftedSize);
             ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) - shiftedSize);
 

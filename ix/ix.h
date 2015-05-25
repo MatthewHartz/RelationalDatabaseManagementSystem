@@ -60,7 +60,7 @@ class IndexManager {
         void printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const;
 
         // Splits the child into two seperate nodes
-        RC splitChild(void* child, void *parent, const Attribute &attribute, IXFileHandle &ixFileHandle, const void *key, int &childPageNum, int &parentPageNum);
+        RC splitChild(void *child, void *parent, const Attribute &attribute, IXFileHandle &ixFileHandle, const void *key, int &childPageNum, int &parentPageNum);
 
         // Gets the following node based upon key value
         RC getNextNodeByKey(void *&child, void *&parent, const void *key, const Attribute &attribute, IXFileHandle &ixFileHandle, int &leftPageNum, int &parentPageNum);
@@ -171,12 +171,14 @@ class IXFileHandle {
         FileHandle* getHandle() { return handle; };
         void setHandle(FileHandle *h) { handle = h; };
         void setRoot(void *data) { handle->currentPage = data; };
+        void setRootPageNum(int pn) { handle->currentPageNum = pn; };
         //void setRoot(void *data) { memcpy(handle->currentPage, data, PAGE_SIZE); };
         void setFreeSpace(void *data, int freeSpace) { memcpy((char*) data + NODE_FREE, &freeSpace, sizeof(int)); };
         void setNodeType(void *node, NodeType type);
         void writeNode(int pageNumber, void* data);
         void readNode(int pageNumber, void *data);
         void* getRoot() { return handle->currentPage; };
+        int getRootPageNum() { return handle->currentPageNum; };
         RC getNode(int pageNum, void *node) { return getHandle()->readPage(pageNum, node); };
         int getRightPointer(void *node);
         void setRightPointer(void *node, int rightPageNum);

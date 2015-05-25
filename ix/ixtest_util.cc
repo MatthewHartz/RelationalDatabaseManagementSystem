@@ -24,7 +24,7 @@ using namespace std;
 
 void assertRC(RC expected, RC real){
     if (expected == success){
-        cerr << "Succeeded as expected, correct!" << endl;
+        //cerr << "Succeeded as expected, correct!" << endl;
         assert(real == success);
     } else {
         cerr << "Failed as expected, correct!" << endl;
