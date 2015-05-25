@@ -75,7 +75,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     void *parent = NULL;
     int childPageNum = 0;
     int parentPageNum = 0;
-    
+
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
         // Test if node is full (This is what makes top-down, top-down
@@ -131,7 +131,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             // Re-run insert Entry with the newly added root key and pages
             return insertEntry(ixFileHandle, attribute, key, rid);
         }
-                
+
         // test if leaf node
         NodeType type = ixFileHandle.getNodeType(child);
         if (type != TypeRoot || type != TypeNode) {
@@ -139,7 +139,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             break;
         }
     }
-       
+
     // If the node does not have enough space, we need to split the node
     if(!hasEnoughSpace(child, attribute)) {
         // if not enough space we need to split
@@ -149,12 +149,12 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         return insertEntry(ixFileHandle, attribute, key, rid);
     }
 
-    // Here we are guaranteed to have a leaf node in child and we can safely insert 
+    // Here we are guaranteed to have a leaf node in child and we can safely insert
     // the new data into the leaf node;
     if (insertIntoLeaf(ixFileHandle, child, key, attribute, rid) == -1) {
         return -1;
     }
-     
+
     // write the node to file
     if(ixFileHandle.getHandle()->writePage(childPageNum, child) == -1) {
         return -1;
@@ -250,7 +250,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
             if(!ixfileHandle.isLeftNodeNull(searchNode, searchOffset, searchPageNum)) {
                 ixfileHandle.getNode(searchPageNum, searchNode);
             } else if (!ixfileHandle.isRightNodeNull(searchNode, attribute, searchOffset, searchPageNum)) {
-                ixfileHandle.getNode(searchPageNum, searchNode);  
+                ixfileHandle.getNode(searchPageNum, searchNode);
             } else {
                 // this should not happen
             }
@@ -438,7 +438,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
                 offset += sizeof(int);
                 memcpy(&rightPage, (char *) parent + offset, sizeof(int));
                 leftPageNum = leftPage;
-                
+
                 // test if director page is zero AND its the first entry in a non-leaf node
                 if (rightPage == 0 && counter == 0) {
                     return 0;
@@ -449,10 +449,10 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
                     child = malloc(PAGE_SIZE);
                     ixfileHandle.getHandle()->readPage(leftPage, child);
                     return 0;
-                } 
+                }
                 counter++;
             }
-            
+
             return 0;
         case TypeVarChar:
             // compare strings
@@ -614,7 +614,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
         }
         default:
             return -1;
-    } 
+    }
 
     // Calculate the size of the node data that needs to be shifted
     int freeSpace = ixFileHandle.getFreeSpace(node);
@@ -623,8 +623,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
 
     // Save data into the temp value
     memcpy((char*)shiftData, (char*)node + offset, shiftSize);
-    
-    // insert the new director here 
+
+    // insert the new director here
     memcpy((char*)node + offset, (char*)director, size);
     offset += size;
 
@@ -1000,7 +1000,7 @@ int IndexManager::createNewLeafEntry(void *data, const void *key, const Attribut
     return offset;
 }
 
-// this function takes the the offset of a key entry plus the key size, so 
+// this function takes the the offset of a key entry plus the key size, so
 // that we are placed at the # of RID's slot
 int IndexManager::getNextKeyOffset(int RIDnumOffset, void *node) {
     // we need to extract the number RID's that exist in the node
@@ -1204,7 +1204,7 @@ IX_ScanIterator::~IX_ScanIterator()
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    // extract freeSpace and calculate the freeSpaceOffset 
+    // extract freeSpace and calculate the freeSpaceOffset
     int freeSpace = IXFileHandle::getFreeSpace(leafNode);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
     int nextPageNum;
@@ -1264,15 +1264,15 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         }
         // we need to advance the offset
         currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset, leafNode);
-        
-        // if we don't break then we continue searching until we reach the end of 
+
+        // if we don't break then we continue searching until we reach the end of
         // the index
     }
     return 0;
 }
 
 void IX_ScanIterator::getIntType(void *&type, RID &rid, void *node, int &offset) {
-    if (type == NULL) { 
+    if (type == NULL) {
         type = malloc(sizeof(int));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
@@ -1284,7 +1284,7 @@ void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int &offset
         type = malloc(sizeof(float));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(float));
-    offset += 2 * sizeof(float);
+    offset += sizeof(float);
 }
 
 void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int &offset) {
@@ -1304,7 +1304,7 @@ bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
                                                     , int offset
                                                     , bool lowInc
                                                     , bool highInc) {
-                                                   
+
     // let's extact the leaf, low and high keys to compare
     int leafKey, lKey, hKey;
     memcpy(&leafKey, (char *) node + offset, sizeof(int));
@@ -1337,7 +1337,7 @@ bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
     } else {
         // this just means return everything
         return true;
-    } 
+    }
 
 }
 
@@ -1380,7 +1380,7 @@ bool IX_ScanIterator::compareReals(void *incomingKey, const void *low
     } else {
         // this just means return everything
         return true;
-    } 
+    }
 }
 
 bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
@@ -1399,14 +1399,14 @@ bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
     memcpy(&leafKey, (char *) node + offset,leafKeySize);
     leafKey[leafKeySize] = '\0';
 
-    if (low != NULL) { 
+    if (low != NULL) {
         memcpy(&lKeySize, (char *) low, sizeof(int));
         lKey = new char[lKeySize + 1];
         memcpy(&lKey, (char *) low + sizeof(int), lKeySize);
         lKey[lKeySize] = '\0';
     }
-    if (high != NULL) { 
-         memcpy(&hKeySize, (char *) high, sizeof(int)); 
+    if (high != NULL) {
+         memcpy(&hKeySize, (char *) high, sizeof(int));
          hKey = new char[hKeySize + 1];
          memcpy(&hKey, (char *) high + sizeof(int), hKeySize);
          hKey[hKeySize] = '\0';
@@ -1417,12 +1417,12 @@ bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
 
     if (lKey != NULL) sLKey = lKey;
     if (hKey != NULL) sHKey = hKey;
-    
+
     // free up the c strings
     delete leafKey;
     delete lKey;
     delete hKey;
-    
+
     // now we can test our comparisons
     if (low != NULL && high != NULL) {
         if (!lowInc && !highInc) {
@@ -1449,7 +1449,7 @@ bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
     } else {
         // this just means return everything
         return true;
-    } 
+    }
     }
 
 RID IX_ScanIterator::getNextRid() {
@@ -1561,7 +1561,7 @@ bool IXFileHandle::isRightNodeNull(void *node, const Attribute &attribute, int o
     int directorLength;
     if (attribute.type == TypeVarChar) {
         memcpy(&directorLength, (char *) node + offset, sizeof(int));
-        offset += sizeof(int) + directorLength; 
+        offset += sizeof(int) + directorLength;
     } else {
         offset += sizeof(int);
     }
@@ -1596,8 +1596,8 @@ int IXFileHandle::getAvailablePageNumber() {
 void IX_PrintError (RC rc)
 {
 
- 
-   
+
+
 }
 
 
