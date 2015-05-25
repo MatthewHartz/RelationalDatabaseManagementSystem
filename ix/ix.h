@@ -72,7 +72,7 @@ class IndexManager {
         RC insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum, IXFileHandle &ixFileHandle);
         
         // returns a director triplet at a given offset
-        RC getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute);
+        RC getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* &key, const Attribute &attribute);
 
         // Used to enter a Key into a leaf 
         RC insertIntoLeaf(IXFileHandle &ixFileHandle, void *child, const void *key, const Attribute &attribute, const RID &rid);

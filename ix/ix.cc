@@ -637,7 +637,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     return 0;
 }
 
-RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute) {
+RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, int &rightPointer, void* &key, const Attribute &attribute) {
     int off = offset;
 
     switch(attribute.type) {
@@ -914,8 +914,7 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
 
 int IndexManager::compareKeys(const void *key1, const void *key2, const Attribute attribute) {
     switch (attribute.type) {
-        case TypeInt:
-        case TypeReal:
+        case TypeInt: {
             int keyOne, keyTwo;
             memcpy(&keyOne, (char*)key1, sizeof(int));
             memcpy(&keyTwo, (char*)key2, sizeof(int));
@@ -925,7 +924,19 @@ int IndexManager::compareKeys(const void *key1, const void *key2, const Attribut
 
             // both equal
             return 0;
-        case TypeVarChar:
+        }
+        case TypeReal: {
+            float keyOne, keyTwo;
+            memcpy(&keyOne, (char*)key1, sizeof(float));
+            memcpy(&keyTwo, (char*)key2, sizeof(float));
+
+            if (keyOne > keyTwo) return 1;
+            if (keyOne < keyTwo) return -1;
+
+            // both equal
+            return 0;
+        }
+        case TypeVarChar: {
             int keyOneLength, keyTwoLength;
             memcpy(&keyOneLength, (char*)key1, sizeof(int));
             memcpy(&keyTwoLength, (char*)key2, sizeof(int));
@@ -951,6 +962,7 @@ int IndexManager::compareKeys(const void *key1, const void *key2, const Attribut
 
             // both equal
             return 0;
+        }
     }
 
     return -1;
