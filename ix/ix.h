@@ -18,7 +18,7 @@ const int SPLIT_THRESHOLD = PAGE_SIZE / 2;
 const int DEFAULT_FREE = PAGE_SIZE - (sizeof(int) * 3);
 
 // Nodes
-typedef enum { TypeNode = 0, TypeLeaf = 1, TypeRoot = 2} NodeType;
+typedef enum { TypeNode = 10, TypeLeaf = 11, TypeRoot = 12} NodeType;
 
 class IX_ScanIterator;
 class IXFileHandle;
