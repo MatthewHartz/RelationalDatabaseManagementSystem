@@ -377,11 +377,8 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
     int type, freeSpace;
     memset(&type, 0, sizeof(int));
-    memcpy(&type, (char*)data + NODE_TYPE, sizeof(byte));
+    memcpy(&type, (char*)data + NODE_TYPE, sizeof(int));
     memcpy(&freeSpace, (char*) data + NODE_FREE, sizeof(int));
-
-    // Node type will be used to determine if they are <Key, ridlist> pairs or
-    // <pointer, key, pointer> groups
 
     int entrySize;
 
@@ -697,7 +694,7 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     int newOffset = 0;
     int nextKeyOffset = 0;
     int newDataOffset = 0;
-    int sizeOfNewData, sizeOfShiftedData;
+    int sizeOfNewData, sizeOfShiftedData = 0;
     void *newData = NULL;
     void *shiftedData = NULL;
 
