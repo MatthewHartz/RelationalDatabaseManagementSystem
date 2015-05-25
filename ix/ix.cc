@@ -343,7 +343,9 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
             // print the keys
             cout << depthString << "\"keys\":[";
             for (auto &key: keys) {
+                if (counter > 0) cout << ",";
                 cout << "\"" << key << "\"";
+                counter++;
             }
 
             // close the keys
@@ -351,6 +353,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 
             // recursively descend the tree printing out the children and their keys
             cout << depthString << "\"children\":[";
+            counter = 0;
             for (auto &pointer: pointers) {
                 if (counter > 0) cout << ",";
                 void *nextNode = malloc(PAGE_SIZE);
@@ -368,7 +371,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
             break;
     }
 
-
+    return 0;
 }
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
@@ -424,6 +427,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
     switch(attribute.type) {
         case TypeInt:
+        case TypeReal:
             // extract the key to compare to
             int cKey;
             memcpy(&cKey, (char *) key, sizeof(int));
@@ -453,8 +457,6 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
             }
             
             return 0;
-        case TypeReal:
-            return -1; 
         case TypeVarChar:
             // compare strings
             return -1;
@@ -563,6 +565,8 @@ RC IndexManager::splitChild(void* child, void *parent
             free(rightPage);
             break;
     }
+
+    return 0;
 }
 
 RC IndexManager::insertDirector(void *node, const void *key, const Attribute &attribute, int nextPageNum, IXFileHandle &ixFileHandle) {
@@ -574,6 +578,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // create the director and save its length
     switch(attribute.type) {
         case TypeInt:
+        case TypeReal:
+        {
             director = malloc(2 * sizeof(int));
             memcpy(director, (char*)key, sizeof(int));
             size += sizeof(int);
@@ -582,8 +588,6 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
 
             int leftPage, rightPage, directorKey, comparisonKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
-                memcpy(&directorKey, (char*) extractionKey, sizeof(int));
-
                 // test if director page is zero in order to break out
                 if (rightPage == 0) {
                     //return 0;
@@ -591,31 +595,26 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
                     break;
                 }
 
-                // extract the key to compare to
-                memcpy(&comparisonKey, (char *) key, sizeof(int));
+                // compare the keys
+                int comparisonResult = compareKeys(key, extractionKey, attribute);
 
-                // if this is true go left
-                if (directorKey > comparisonKey) {
-                   break;
+                // if our key is less than the pointer, we found our target position
+                if (comparisonResult == -1) {
+                    break;
                 }
 
                 offset += 8;
             }
             break;
-        case TypeReal:
-            director = malloc(2 * sizeof(int));
-            memcpy(&director, (char*)key, sizeof(float));
-            size += sizeof(float);
-            memcpy((char *) director + size, &nextPageNum, sizeof(int));
-            size += sizeof(int);
-            break;
-        case TypeVarChar:
+        }
+        case TypeVarChar: {
             int length;
             memcpy(&length, (char *) key, sizeof(int));
             //director = malloc(sizeof(int) + length));
             //memcpy(&director)
             size = length + sizeof(int);
             break;
+        }
         default:
             return -1;
     } 
@@ -654,9 +653,10 @@ RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, i
             memcpy(&rightPointer, (char*) node + off, sizeof(int));
             break;
         case TypeReal:
+            key = malloc(sizeof(int));
             memcpy(&leftPointer, (char*) node + off, sizeof(int));
             off += sizeof(int);
-            memcpy(key, (char*) node + off, sizeof(float));
+            memcpy((char*)key, (char*) node + off, sizeof(float));
             off += sizeof(float);
             memcpy(&rightPointer, (char*) node + off, sizeof(int));
             break;
@@ -666,7 +666,9 @@ RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, i
 
             int length;
             memcpy(&length, (char*) node + off, sizeof(int));
-            memcpy(key, (char*) node + off, sizeof(int));
+
+            key = malloc(sizeof(int) + length);
+            memcpy((char*)key, (char*) node + off, sizeof(int));
             off += sizeof(int);
 
             memcpy(key, (char*) node + off, length);
@@ -699,107 +701,107 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     void *newData = NULL;
     void *shiftedData = NULL;
 
-    // first we need to determine what type of attribute we have
-    switch(attribute.type) {
+    // Save the number of bits for key length (this will be used to read in length size
+    int keyLengthSize;
+    switch (attribute.type) {
         case TypeInt:
-            // local variale used only by TypeInt
-            int incomingKey;
-            int leafKey;
-
-            // we can calculate the size of the new data if the key is not equal to 
-            // any key in the leaf [key, # of RIDs, rid]
-            sizeOfNewData = (2 * sizeof(int)) + RID_SIZE;
-            sizeOfShiftedData = 0;
-
-            // extract the keys that will be compared
-            memcpy(&incomingKey, (char *) key, sizeof(int));
-
-            // loop throught he keys until we have reached the end
-            while (nextKeyOffset < freeSpaceOffset) {
-                // lets first extract the key and compare
-                memcpy(&leafKey, (char * ) child + nextKeyOffset, sizeof(int));
-                
-                // if the incoming key is less than the leafKey then we need to 
-                // return the prevKey Offset
-                if (incomingKey < leafKey) {
-                    // calculate the size of the shifting data and set the newOffset
-                    // to the previous 
-                    sizeOfShiftedData = freeSpaceOffset - nextKeyOffset;
-                    newOffset = nextKeyOffset;
-                    
-                    // lastly we need to build the new data that will be inserted
-                    newData = malloc((2 *sizeof(int)) + RID_SIZE);
-                    createNewLeafEntry(newData, key, attribute, rid);
-                    break; 
-                }
-                // if the incoming key and the leafkey are the same then we just
-                // append the rid the list
-                if (incomingKey == leafKey) {
-                    // here we must insert a new RID into the list
-                    sizeOfNewData = RID_SIZE;
-
-                    // get the offset of the last RID in the list
-                    int numberOfRIDs = getNumberOfRids(child, nextKeyOffset + sizeof(int));
-
-                    // get the offset of the last RID in the list
-                    newOffset = nextKeyOffset + (2 * sizeof(int)) + (numberOfRIDs * RID_SIZE);
-
-                    // update the number of RIDs in key
-                    numberOfRIDs += 1;
-                    memcpy((char*)child + (nextKeyOffset + sizeof(int)), &numberOfRIDs, sizeof(int));
-
-                    // calculate the data that will be shifted to the right
-                    sizeOfShiftedData = freeSpaceOffset - newOffset;
-
-                    // create the new data which is only an rid
-                    newData = malloc(RID_SIZE);
-                    memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int));
-                    newDataOffset += sizeof(int);
-                    memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
-                    break;
-                }
-                // move to the next key
-                nextKeyOffset = getNextKeyOffset(nextKeyOffset + sizeof(int), child);
-            }
-            // if we have reached the end then we need to create the data for insertion
-            // at the end of the leaf node
-            if (nextKeyOffset == freeSpaceOffset) {
-                // just insert at the end
-                newOffset = freeSpaceOffset; 
-                
-                // lastly we need to build the new data that will be inserted
-                newData = malloc((2 *sizeof(int)) + RID_SIZE);
-                createNewLeafEntry(newData, key, attribute, rid);
-            } 
-
-            // we need to shift the data to the right and insert the new data
-            shiftedData = malloc(sizeOfShiftedData);
-            memcpy((char *) shiftedData, (char *) child + newOffset, sizeOfShiftedData);
-
-            // shift to the right
-            memcpy((char *) child + newOffset + sizeOfNewData, (char *) shiftedData, sizeOfShiftedData);
-
-            // enter new data
-            memcpy((char *) child + newOffset, (char *) newData, sizeOfNewData);
-
-            // update freespace
-            ixFileHandle.setFreeSpace(child, freeSpace - sizeOfNewData);
-
-            // free memory
-            if (newData != NULL) free(newData);
-            if (shiftedData != NULL) free(shiftedData);
-            
-            return 0;
         case TypeReal:
-            // do work for a float
-            return 0;
+            keyLengthSize = 0;
+            break;
         case TypeVarChar:
-            // do work for a varChar
-            return 0;
+            keyLengthSize = 4;
+            break;
         default:
-            // shit is borked!
             return -1;
     }
+
+
+    // Iterate over keys
+    int keyLength;
+    void *comparisonKey;
+
+    while (nextKeyOffset < freeSpaceOffset) {
+        memcpy(&keyLength, (char*)child + nextKeyOffset, keyLengthSize);
+        // Tease out the key from the node
+        int keySize;
+        if (keyLengthSize != 0) {
+            keySize = sizeof(int) + keyLength;
+        } else {
+            keySize = sizeof(int);
+        }
+
+        // Initialize the comparison key
+        comparisonKey = malloc(keySize);
+        memcpy(comparisonKey, (char*)child + nextKeyOffset, keySize);
+
+        nextKeyOffset += keySize;
+
+        int comparisonResult = compareKeys(key, comparisonKey, attribute);
+
+        if (comparisonResult == -1) {
+            // calculate the size of the shifting data and set the newOffset
+            // to the previous
+            sizeOfShiftedData = freeSpaceOffset - nextKeyOffset;
+            newOffset = nextKeyOffset;
+
+            // lastly we need to build the new data that will be inserted
+            newData = malloc((2 *sizeof(int)) + RID_SIZE);
+            createNewLeafEntry(newData, key, attribute, rid);
+            break;
+        } else if (comparisonResult == 0) {
+            // here we must insert a new RID into the list
+            sizeOfNewData = RID_SIZE;
+
+            // get the offset of the last RID in the list
+            int numberOfRIDs = getNumberOfRids(child, nextKeyOffset + sizeof(int));
+
+            // get the offset of the last RID in the list
+            newOffset = nextKeyOffset + (2 * sizeof(int)) + (numberOfRIDs * RID_SIZE);
+
+            // update the number of RIDs in key
+            numberOfRIDs += 1;
+            memcpy((char*)child + (nextKeyOffset + sizeof(int)), &numberOfRIDs, sizeof(int));
+
+            // calculate the data that will be shifted to the right
+            sizeOfShiftedData = freeSpaceOffset - newOffset;
+
+            // create the new data which is only an rid
+            newData = malloc(RID_SIZE);
+            memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int));
+            newDataOffset += sizeof(int);
+            memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+            break;
+        } else {
+            nextKeyOffset = getNextKeyOffset(nextKeyOffset, child);
+        }
+    }
+
+    // if we have reached the end then we need to create the data for insertion
+    // at the end of the leaf node
+    if (nextKeyOffset == freeSpaceOffset) {
+        // just insert at the end
+        newOffset = freeSpaceOffset;
+        // lastly we need to build the new data that will be inserted
+        newData = malloc((2 *sizeof(int)) + RID_SIZE);
+        sizeOfNewData = createNewLeafEntry(newData, key, attribute, rid);
+    }
+    // we need to shift the data to the right and insert the new data
+    shiftedData = malloc(sizeOfShiftedData);
+    memcpy((char *) shiftedData, (char *) child + newOffset, sizeOfShiftedData);
+
+    // shift to the right
+    memcpy((char *) child + newOffset + sizeOfNewData, (char *) shiftedData, sizeOfShiftedData);
+
+    // enter new data
+    memcpy((char *) child + newOffset, (char *) newData, sizeOfNewData);
+
+    // update freespace
+    ixFileHandle.setFreeSpace(child, freeSpace - sizeOfNewData);
+
+    // free memory
+    if (newData != NULL) free(newData);
+    if (shiftedData != NULL) free(shiftedData);
+    return 0;
 }
 
 RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
@@ -921,7 +923,11 @@ int IndexManager::compareKeys(const void *key1, const void *key2, const Attribut
             memcpy(&keyOne, (char*)key1, sizeof(int));
             memcpy(&keyTwo, (char*)key2, sizeof(int));
 
-            return keyOne < keyTwo;
+            if (keyOne > keyTwo) return 1;
+            if (keyOne < keyTwo) return -1;
+
+            // both equal
+            return 0;
         case TypeVarChar:
             int keyOneLength, keyTwoLength;
             memcpy(&keyOneLength, (char*)key1, sizeof(int));
@@ -959,7 +965,7 @@ int IndexManager::getNumberOfRids(void *node, int RIDnumOffset) {
     return numberOfRIDs;
 }
 
-void IndexManager::createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid) {
+int IndexManager::createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid) {
     int numRids = 1;
     int offset = 0;
 
@@ -973,12 +979,15 @@ void IndexManager::createNewLeafEntry(void *data, const void *key, const Attribu
             memcpy((char *) data + offset, &rid.pageNum, sizeof(int));
             offset += sizeof(int);
             memcpy((char *) data + offset, &rid.slotNum, sizeof(int));
+            offset += sizeof(int);
             break;
         case TypeVarChar:
             break;
         default:
             break;
     }
+
+    return offset;
 }
 
 // this function takes the the offset of a key entry plus the key size, so 
@@ -1037,18 +1046,31 @@ RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Att
 
         // extract key
         memcpy(&keyLength, (char*)node + offset, keyLengthSize);
-        // Tease out the key from the node
-        if (keyLengthSize != 0) {
-            // TODO fix this for strings
-            offset += sizeof(int);
-            memcpy(&key, (char*)node + offset, sizeof(int));
-            //keys.push_back(key);
-        } else {
-            int temp;
-            memcpy(&temp, (char*)node + offset, sizeof(int));
-            offset += sizeof(int);
-            key = std::to_string(temp);
-            //keys.push_back(std::to_string(key));
+        switch (attribute.type) {
+            case TypeInt: {
+                int intKey;
+                memcpy(&intKey, (char*)node + offset, sizeof(int));
+                offset += sizeof(int);
+                key = std::to_string(intKey);
+                break;
+            }
+            case TypeReal: {
+                float floatKey;
+                memcpy(&floatKey, (char*)node + offset, sizeof(float));
+                offset += sizeof(int);
+                key = std::to_string(floatKey);
+                break;
+            }
+            case TypeVarChar: {
+                string stringKey;
+                int length;
+                memcpy(&length, (char*)node + offset, sizeof(int));
+                offset += sizeof(int);
+                key = stringKey;
+                break;
+            }
+            default:
+                return -1;
         }
 
         returnKey += key;
@@ -1127,18 +1149,31 @@ RC IndexManager::getKeysInNonLeaf(IXFileHandle &ixFileHandle
         if (offset >= freeSpaceOffset) break;
 
         // extract key
-        memcpy(&keyLength, (char*)node + offset, keyLengthSize);
-        // Tease out the key from the node
-        if (keyLengthSize != 0) {
-            string key;
-            offset += sizeof(int);
-            memcpy(&key, (char*)node + offset, sizeof(int));
-            keys.push_back(key);
-        } else {
-            int key;
-            memcpy(&key, (char*)node + offset, sizeof(int));
-            offset += sizeof(int);
-            keys.push_back(std::to_string(key));
+        switch (attribute.type) {
+            case TypeInt: {
+                int intKey;
+                memcpy(&intKey, (char*)node + offset, sizeof(int));
+                offset += sizeof(int);
+                keys.push_back(std::to_string(intKey));
+                break;
+            }
+            case TypeReal: {
+                float floatKey;
+                memcpy(&floatKey, (char*)node + offset, sizeof(float));
+                offset += sizeof(int);
+                keys.push_back(std::to_string(floatKey));
+                break;
+            }
+            case TypeVarChar: {
+                string stringKey;
+                int length;
+                memcpy(&length, (char*)node + offset, sizeof(int));
+                offset += sizeof(int);
+                memcpy(&stringKey, (char*)node + offset, length);
+                break;
+            }
+            default:
+                return -1;
         }
     }
 

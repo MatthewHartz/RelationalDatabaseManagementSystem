@@ -93,7 +93,7 @@ class IndexManager {
         int getKeyLength(const void *key, Attribute attr);
 
         // Creates an initial key on the insert of a leaf node
-        void createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid);
+        int createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid);
 
         // The recursive function that will iterate over the tree printing out all the nodes contents
         RC printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute, int depth) const;
