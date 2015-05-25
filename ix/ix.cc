@@ -1284,7 +1284,7 @@ void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int &offset
         type = malloc(sizeof(float));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(float));
-    offset += sizeof(float);
+    offset += 2 * sizeof(float);
 }
 
 void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int &offset) {
