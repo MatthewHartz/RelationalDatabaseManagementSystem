@@ -1252,9 +1252,16 @@ void IX_ScanIterator::getIntType(void *&type, RID &rid, void *node, int offset) 
 
 void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int offset) {
     if (type == NULL) {
-        type = malloc(sizeof(double));
+        type = malloc(sizeof(float));
     }
-    memcpy((char *) type, (char *) node + offset, sizeof(int));
+    memcpy((char *) type, (char *) node + offset, sizeof(float));
+    offset += sizeof(float);
+
+    // TODO: how to return multiple RID's for duplicates
+    memcpy(&rid.pageNum, (char *) node + offset, sizeof(int));
+    offset += sizeof(int);
+    memcpy(&rid.slotNum, (char *) node + offset, sizeof(int));
+    offset += sizeof(int);
 }
 
 void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int offset) {
@@ -1319,10 +1326,10 @@ bool IX_ScanIterator::compareReals(void *incomingKey, const void *low
                                                     , bool lowInc
                                                     , bool highInc) {
 
-    double leafKey, lKey, hKey;
-    memcpy(&leafKey, (char *) node + offset, sizeof(double));
-    if (low != NULL) memcpy(&lKey, (char *) low, sizeof(double));
-    if (high != NULL) memcpy(&hKey, (char *) high, sizeof(double));
+    float leafKey, lKey, hKey;
+    memcpy(&leafKey, (char *) node + offset, sizeof(float));
+    if (low != NULL) memcpy(&lKey, (char *) low, sizeof(float));
+    if (high != NULL) memcpy(&hKey, (char *) high, sizeof(float));
 
     // now we can test our comparisons
     if (low != NULL && high != NULL) {
