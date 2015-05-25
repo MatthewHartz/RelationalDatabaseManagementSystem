@@ -128,15 +128,15 @@ class IX_ScanIterator {
         void setLowKeyValues(const void *lowKey, bool lowKeyInclusive);
         void setHighKeyValues(const void *highKey, bool highKeyInclusive);
         void setLeafNode(void *node) { memcpy((char *) leafNode, (char *) node, PAGE_SIZE); };
-        void setType(void (*f)(void*&, void*, int)) { getKey = f; };
+        void setType(void (*f)(void*&, RID&, void*, int)) { getKey = f; };
         void setFunc(bool (*f)(void*, const void*, const void*, void*, int, bool, bool)) { compareTypeFunc = f; };
         void setLeafOffset(int newOffset) { currentLeafOffset = newOffset; };
         int getLeafOffset() { return currentLeafOffset; };
 
         // static functions used to extract types
-        static void getIntType(void *&type, void *node, int offset);
-        static void getRealType(void *&type, void *node, int offset);
-        static void getVarCharType(void *&type, void *node, int offset); 
+        static void getIntType(void *&type, RID &rid, void *node, int offset);
+        static void getRealType(void *&type, RID &rid, void *node, int offset);
+        static void getVarCharType(void *&type, RID &rid, void *node, int offset); 
         static bool compareInts(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc);
         static bool compareReals(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc);
         static bool compareVarChars(void *incomingKey, const void *low, const void *high, void *node, int offset, bool lowInc, bool highInc);
@@ -150,7 +150,7 @@ class IX_ScanIterator {
         bool lowKeyInclusive;
         bool highKeyInclusive;
         int currentLeafOffset;
-        void (*getKey)(void*&, void*, int);
+        void (*getKey)(void*&, RID&, void*, int);
         bool (*compareTypeFunc)(void*, const void*, const void*, void*, int, bool, bool); 
 };
 

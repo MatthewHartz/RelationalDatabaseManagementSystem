@@ -655,7 +655,6 @@ int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid)
 }
 
 int RecordBasedFileManager::getSlot(const void *page, int freeSpace) {
-    int freeSpaceOffset = extractFreeSpaceOffset(page);
     int numRecords = extractNumRecords(page);
     int startOfSlotDirectoryOffset = getStartOfDirectoryOffset(numRecords, page);
 

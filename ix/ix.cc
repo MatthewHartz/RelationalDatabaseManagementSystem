@@ -372,6 +372,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
 
 bool IndexManager::hasEnoughSpace(void *data, const Attribute &attribute) {
     int type, freeSpace;
+    memset(&type, 0, sizeof(int));
     memcpy(&type, (char*)data + NODE_TYPE, sizeof(byte));
     memcpy(&freeSpace, (char*) data + NODE_FREE, sizeof(int));
 
@@ -555,8 +556,10 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // I think here we need to write to write our pages to file for all pages
             ixFileHandle.getHandle()->writePage(childPageNum, child);
-            ixFileHandle.getHandle()->writePage(rightPageNum, rightPage);
+            ixFileHandle.getHandle()->appendPage(rightPage);
 
+            // free up the right page
+            free(rightPage);
             break;
     }
 }
@@ -619,7 +622,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // Calculate the size of the node data that needs to be shifted
     int freeSpace = ixFileHandle.getFreeSpace(node);
     int shiftSize = DEFAULT_FREE - freeSpace - offset;
-    void* shiftData;
+    void* shiftData = malloc(shiftSize);
 
     // Save data into the temp value
     memcpy((char*)shiftData, (char*)node + offset, shiftSize);
@@ -634,7 +637,6 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // update Freespace
     freeSpace -= size;
     ixFileHandle.setFreeSpace(node, freeSpace);
-    int temp = ixFileHandle.getFreeSpace(node);
     return 0;
 }
 
@@ -643,9 +645,10 @@ RC IndexManager::getDirectorAtOffset(int offset, void* node, int &leftPointer, i
 
     switch(attribute.type) {
         case TypeInt:
+            key = malloc(sizeof(int));
             memcpy(&leftPointer, (char*) node + off, sizeof(int));
             off += sizeof(int);
-            memcpy(key, (char*) node + off, sizeof(int));
+            memcpy((char *) key, (char*) node + off, sizeof(int));
             off += sizeof(int);
             memcpy(&rightPointer, (char*) node + off, sizeof(int));
             break;
@@ -1150,9 +1153,6 @@ IX_ScanIterator::IX_ScanIterator()
 
 IX_ScanIterator::~IX_ScanIterator()
 {
-    if (leafNode != NULL) {
-        free(leafNode);
-    }
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
@@ -1171,10 +1171,11 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             ixFileHandle->getHandle()->readPage(nextPageNum, leafNode);
             freeSpace = IXFileHandle::getFreeSpace(leafNode);
             freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
+            currentLeafOffset = 0;
         }
 
         // get the type and the compare
-        (*getKey)(key, leafNode, currentLeafOffset);
+        (*getKey)(key, rid, leafNode, currentLeafOffset);
 
         // compare and and evaluate the return type
         if((*compareTypeFunc)(key, lowKey, highKey, leafNode, currentLeafOffset, lowKeyInclusive, highKeyInclusive)) {
@@ -1190,21 +1191,28 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     return 0;
 }
 
-void IX_ScanIterator::getIntType(void *&type, void *node, int offset) {
+void IX_ScanIterator::getIntType(void *&type, RID &rid, void *node, int offset) {
     if (type == NULL) { 
         type = malloc(sizeof(int));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
+    offset += 2 * sizeof(int);
+
+    // TODO: how to return multiple RID's for duplicates
+    memcpy(&rid.pageNum, (char *) node + offset, sizeof(int));
+    offset += sizeof(int);
+    memcpy(&rid.slotNum, (char *) node + offset, sizeof(int));
+
 }
 
-void IX_ScanIterator::getRealType(void *&type, void *node, int offset) {
+void IX_ScanIterator::getRealType(void *&type, RID &rid, void *node, int offset) {
     if (type == NULL) {
         type = malloc(sizeof(double));
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
 }
 
-void IX_ScanIterator::getVarCharType(void *&type, void *node, int offset) {
+void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int offset) {
     int varCharLength;
     memcpy(&varCharLength, (char *) node + offset, sizeof(int));
     if (type == NULL) {
@@ -1371,17 +1379,17 @@ bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
 
 RC IX_ScanIterator::close()
 {
-    return -1;
+    if (leafNode != NULL) {
+        free(leafNode);
+    }
+
+    return 0;
 }
-
-// helper functions for each type
-
 
 
 IXFileHandle::IXFileHandle()
 {
     FileHandle* handle = NULL;
-
     setHandle(handle);
 }
 
@@ -1442,8 +1450,6 @@ void IXFileHandle::writeNode(int pageNumber, void* data) {
     if (pageNumber == 0) {
         setRoot(data);
     }
-
-    void *test = getRoot();
 
     // write page
     getHandle()->writePage(pageNumber, data);
