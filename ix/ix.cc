@@ -82,6 +82,13 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         if(!hasEnoughSpace(child, attribute)) {
             // if not enough space we need to split
             splitChild(child, parent, attribute, ixFileHandle, key, childPageNum, parentPageNum);
+
+            // if parent != root, free
+            if (parentPageNum != ixFileHandle.getRootPageNum()) {
+                free(parent);
+            }
+
+            free(child);
             return insertEntry(ixFileHandle, attribute, key, rid);
         }
 
@@ -133,6 +140,11 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             return insertEntry(ixFileHandle, attribute, key, rid);
         }
 
+        // if parent != root, free
+//        if (parentPageNum != ixFileHandle.getRootPageNum()) {
+//            free(parent);
+//        }
+
         // test if leaf node
         NodeType type = ixFileHandle.getNodeType(child);
         if (type == TypeLeaf) {
@@ -145,6 +157,13 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     if(!hasEnoughSpace(child, attribute)) {
         // if not enough space we need to split
         splitChild(child, parent, attribute, ixFileHandle, key, childPageNum, parentPageNum);
+
+        // if parent != root, free
+        if (parentPageNum != ixFileHandle.getRootPageNum()) {
+            free(parent);
+        }
+
+        free(child);
 
         // Now the parent and children have been created/modified, reinsert into tree
         return insertEntry(ixFileHandle, attribute, key, rid);
@@ -160,6 +179,13 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     if(ixFileHandle.getHandle()->writePage(childPageNum, child) == -1) {
         return -1;
     }
+
+    // if parent != root, free
+    if (parentPageNum != ixFileHandle.getRootPageNum()) {
+        free(parent);
+    }
+
+    free(child);
     return 0;
 }
 
@@ -455,6 +481,9 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
     // else is empty page
 
+    // free the directorKey
+    free(directorKey);
+
     return 0;
 }
 
@@ -490,6 +519,7 @@ RC IndexManager::splitChild(void* child, void *parent
 
     switch (nodeType) {
         case TypeRoot:
+            //printBtree(ixFileHandle, attribute);
             // create a new root node
             parentPageNum = ixFileHandle.getAvailablePageNumber();
             parent = malloc(PAGE_SIZE);
@@ -587,9 +617,13 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // free up the right page
             free(rightPage);
+
+            //printBtree(ixFileHandle, attribute);
  
             break;
         case TypeNode:
+            //printBtree(ixFileHandle, attribute);
+
             switch (attribute.type) {
                 case TypeInt:
                 case TypeReal:
@@ -815,6 +849,10 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // update Freespace
     freeSpace -= size;
     ixFileHandle.setFreeSpace(node, freeSpace);
+
+    // free director
+    free(director);
+    free(shiftData);
     return 0;
 }
 
@@ -934,6 +972,9 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             // lastly we need to build the new data that will be inserted
             newData = malloc((2 *sizeof(int)) + RID_SIZE);
             createNewLeafEntry(newData, key, attribute, rid);
+
+            // free the comparison key
+            free(comparisonKey);
             break;
         } else if (comparisonResult == 0) {
             // here we must insert a new RID into the list
@@ -957,9 +998,15 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             memcpy((char *) newData + newDataOffset, &rid.pageNum, sizeof(int));
             newDataOffset += sizeof(int);
             memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
+
+            // free the comparison key
+            free(comparisonKey);
             break;
         } else {
             nextKeyOffset = getNextKeyOffset(nextKeyOffset, child);
+
+            // free the comparison key
+            free(comparisonKey);
         }
     }
 
@@ -1096,8 +1143,10 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
         } else {
             nextKeyOffset = getNextKeyOffset(nextKeyOffset, child);
         }
-
     }
+
+    // free the comparison key
+    free(comparisonKey);
 
     return 0;
 }
