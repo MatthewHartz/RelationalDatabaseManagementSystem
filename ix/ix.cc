@@ -106,7 +106,6 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             int leftPointerNum = ixFileHandle.getAvailablePageNumber();
             ixFileHandle.initializeNewNode(leftPointerData, TypeLeaf);
             ixFileHandle.getHandle()->appendPage(leftPointerData);
-            ixFileHandle.getHandle()->readPage(leftPointerNum, leftPointerData);  // REMOVE THIS IF WORKS
 
             // Initialize Right Pointer
             int rightPointerNum = ixFileHandle.getAvailablePageNumber();
@@ -135,6 +134,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
             // Write page to memory (GOING TO ASSUME ROOT)
             ixFileHandle.setRoot(parent);
+
+            // free the new child nodes
+            free(leftPointerData);
+            free(rightPointerData);
 
             // Re-run insert Entry with the newly added root key and pages
             return insertEntry(ixFileHandle, attribute, key, rid);
@@ -472,14 +475,12 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
         counter++;
     }
 
-    // key is greater than the last director, therefore enter into the last page
+    // key is greater than the last director, therefore enter into the last page, else is an empty page (edge case)
     if (counter != 0) {
         child = malloc(PAGE_SIZE);
         ixfileHandle.getHandle()->readPage(rightPage, child);
         leftPageNum = rightPage;
     }
-
-    // else is empty page
 
     // free the directorKey
     free(directorKey);
@@ -1033,8 +1034,9 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     ixFileHandle.setFreeSpace(child, freeSpace - sizeOfNewData);
 
     // free memory
-    if (newData != NULL) free(newData);
-    if (shiftedData != NULL) free(shiftedData);
+    free(newData);
+    free(shiftedData);
+
     return 0;
 }
 
@@ -1768,7 +1770,7 @@ void IXFileHandle::setNodeType(void *node, NodeType type) {
 
 void IXFileHandle::writeNode(int pageNumber, void* data) {
     // If page number == 0, update root node
-    if (pageNumber == 0) {
+    if (pageNumber == getRootPageNum()) {
         setRoot(data);
     }
 
