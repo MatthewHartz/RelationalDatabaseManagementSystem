@@ -1261,7 +1261,7 @@ int IndexManager::createNewLeafEntry(void *&data, const void *key, const Attribu
             memcpy(&length, (char*) key + offset, sizeof(int));
             int keySize = length + sizeof(int);
 
-            data = malloc(keySize);
+            data = malloc(keySize + sizeof(int) + RID_SIZE);
             memcpy((char *) data, (char*)key, keySize);
             offset += keySize;
 
