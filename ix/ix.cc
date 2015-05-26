@@ -790,8 +790,23 @@ RC IndexManager::splitChild(void* child, void *parent
             // update freeSpace
             ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
+            // create key for insert into director using the key at the beginning of the split
+            void *directorKey;
+            int directorKeyLength;
+
+            memcpy(&directorKeyLength, (char*)rightPage + currentKeyOffset, keyLengthSize);
+            // Tease out the key from the node
+            if (keyLengthSize != 0) {
+                keySize = sizeof(int) + keyLength;
+            } else {
+                keySize = sizeof(int);
+            }
+
+            directorKey = malloc(keySize);
+            memcpy(directorKey, (char*)rightPage, keySize);
+
             // update the parent with a new director, insertDirector will automatically update freespace
-            if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
+            if(insertDirector(parent, directorKey, attribute, rightPageNum, ixFileHandle)) {
                 return -1;
             }
             // here we have write the parent to file
@@ -804,6 +819,7 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.getHandle()->appendPage(rightPage);
 
             // free up the right page
+            if (directorKey != NULL) free(directorKey);
             free(rightPage);
             break;
     }
@@ -843,9 +859,14 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
         case TypeVarChar: {
             int length;
             memcpy(&length, (char *) key, sizeof(int));
-            size = sizeof(int) + length;
-            director = malloc(size);
+            size += length + sizeof(int);
+
+            // copy over the whole key to director
+            director = malloc(size + sizeof(int));
             memcpy(director, (char *)key, size);
+
+            memcpy((char*)director + size, &nextPageNum, sizeof(int));
+            size += sizeof(int);
 
             int leftPage, rightPage, directorKey, comparisonKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
@@ -922,18 +943,20 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
             memcpy(&rightPointer, (char*) node + offset, sizeof(int));
             break;
         case TypeVarChar:
+            // copy left pointer
             memcpy(&leftPointer, (char*) node + offset, sizeof(int));
             offset += sizeof(int);
 
+            // get length of key
             int length;
             memcpy(&length, (char*) node + offset, sizeof(int));
 
+            // copy key from node into key
             key = malloc(sizeof(int) + length);
-            memcpy((char*)key, (char*) node + offset, sizeof(int));
-            offset += sizeof(int);
+            memcpy(key, (char*) node + offset, sizeof(int) + length);
+            offset += sizeof(int) + length;
 
-            memcpy(key, (char*) node + offset, length);
-            offset += length;
+            // copy right pointer
             memcpy(&rightPointer, (char*) node + offset, sizeof(int));
             break;
         default:
@@ -1215,7 +1238,7 @@ int IndexManager::compareKeys(const void *key1, const void *key2, const Attribut
             // get the smaller of the two to do the character comparisons
             int compareLen = (keyOneLength > keyTwoLength) ? keyTwoLength : keyOneLength;
 
-            // iterate over the keys and decide which is longer
+            // iterate over the keys and decide which is larger
             char keyOneVal;
             char keyTwoVal;
             for (int i = 0; i < compareLen; i++) {
@@ -1359,11 +1382,20 @@ RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Att
                 break;
             }
             case TypeVarChar: {
-                string stringKey;
                 int length;
                 memcpy(&length, (char*)node + offset, sizeof(int));
                 offset += sizeof(int);
-                key = stringKey;
+
+                char* s = new char[length + 1];
+                memcpy(s, (char *)node + offset, length);
+                char nullCharacter = '\0';
+                memcpy(s + length, &nullCharacter, sizeof(char));
+                offset += length;
+
+                string stringKey(s);
+
+                keys.push_back(stringKey);
+
                 break;
             }
             default:
@@ -1462,11 +1494,20 @@ RC IndexManager::getKeysInNonLeaf(IXFileHandle &ixFileHandle
                 break;
             }
             case TypeVarChar: {
-                string stringKey;
                 int length;
                 memcpy(&length, (char*)node + offset, sizeof(int));
                 offset += sizeof(int);
-                memcpy(&stringKey, (char*)node + offset, length);
+
+                char* s = new char[length + 1];
+                memcpy(s, (char *)node + offset, length);
+                char nullCharacter = '\0';
+                memcpy(s + length, &nullCharacter, sizeof(char));
+                offset += length;
+
+                string stringKey(s);
+
+                keys.push_back(stringKey);
+
                 break;
             }
             default:
