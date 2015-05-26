@@ -64,7 +64,7 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
     handle->writePage(ixfileHandle.getRootPageNum(), root);
     if (pfm->closeFile(*handle) == -1) return -1;
     delete handle;
-
+    free(root);
     return 0;
 }
 
@@ -73,7 +73,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // extract root
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
-    int childPageNum = 0;
+    int childPageNum = ixFileHandle.getRootPageNum();
     int parentPageNum = 0;
 
     // Loop over traverse and save left and right pointers until leaf page
@@ -219,7 +219,8 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     // extract root
     void *child = ixFileHandle.getRoot();
     void *parent = NULL;
-    int childPageNum, parentPageNum;
+    int childPageNum = ixFileHandle.getRootPageNum();
+    int parentPageNum;
 
     // Loop over traverse and save left and right pointers until leaf page
     while(true) {
@@ -236,6 +237,10 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         }
 
         // if child is null (first entry into the root node, SHOULD NEVER HAPPEN OTHERWISE)
+        if (parent != ixFileHandle.getRoot()) {
+            free(parent);
+            parent = NULL;
+        }
         if(child == NULL) {
             return -1;
         }
@@ -262,6 +267,8 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     if(ixFileHandle.getHandle()->writePage(childPageNum, child) == -1) {
         return -1;
     }
+    
+    if (child != NULL) free(child);
 
     return 0;
 }
@@ -289,7 +296,8 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     // we need to save the first leaf node in the tree to begin a scan
     void *root = ixfileHandle.getRoot();
     void *parentNode = NULL;
-    void *searchNode = malloc(PAGE_SIZE);
+    void *searchNode = NULL;
+    searchNode = malloc(PAGE_SIZE);
     memcpy((char *) searchNode, (char *) root, PAGE_SIZE);
     int searchPageNum, searchOffset = 0;
     int parentPage;
@@ -314,6 +322,8 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         // find the leaf node where the lowKey is located, we'll let geNextEntry() worry about inclusive
         while(ixfileHandle.getNodeType(searchNode) != TypeLeaf) {
             if(getNextNodeByKey(searchNode, parentNode, lowKey, attribute, ixfileHandle, searchPageNum, parentPage)) {
+                if (searchNode != NULL) free(searchNode);
+                if (parentNode != NULL) free(parentNode);
                 return -1;
             }
         }
@@ -337,6 +347,9 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
             break;
 
     }
+    if (searchNode != NULL) free(searchNode);
+    if (parentNode != NULL) free(parentNode);
+
     return 0;
 }
 
@@ -352,6 +365,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
     vector<string> keys;
     vector<int> pointers;
     string depthString;
+    ofstream myfile("tree.txt");
 
     // initialize the depth string, this is used to make the correct justifications
     for (int i = 0; i < depth; i++) {
@@ -366,63 +380,63 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
             getKeysInLeaf(ixFileHandle, node, attribute, keys);
 
             // print initial brace
-            cout << endl << depthString << "{";
+            myfile << endl << depthString << "{";
 
             // print the keys
-            cout << "\"keys\":[";
+            myfile << "\"keys\":[";
             for (auto &key: keys) {
                 if (counter > 0) {
-                    cout << ",";
+                    myfile << ",";
                 }
-                cout << "\"" << key << "\"";
+                myfile << "\"" << key << "\"";
 
                 counter++;
             }
 
             // close the keys
-            cout << "]";
+            myfile << "]";
 
             // print closing brace
-            cout << "}";
+            myfile << "}";
             break;
         case TypeNode:
         case TypeRoot:
             getKeysInNonLeaf(ixFileHandle, node, attribute, keys, pointers);
 
             // print initial brace
-            cout << endl << depthString << "{" << endl;
+            myfile << endl << depthString << "{" << endl;
 
             // print the keys
-            cout << depthString << "\"keys\":[";
+            myfile << depthString << "\"keys\":[";
             for (auto &key: keys) {
-                if (counter > 0) cout << ",";
-                cout << "\"" << key << "\"";
+                if (counter > 0) myfile << ",";
+                myfile << "\"" << key << "\"";
                 counter++;
             }
 
             // close the keys
-            cout << "]," << endl;
+            myfile << "]," << endl;
 
             // recursively descend the tree printing out the children and their keys
-            cout << depthString << "\"children\":[";
+            myfile << depthString << "\"children\":[";
             counter = 0;
             for (auto &pointer: pointers) {
-                if (counter > 0) cout << ",";
+                if (counter > 0) myfile << ",";
                 void *nextNode = malloc(PAGE_SIZE);
                 ixFileHandle.getHandle()->readPage(pointer, nextNode);
                 printNode(nextNode, ixFileHandle, attribute, depth + 1);
-
+                free(nextNode);
                 counter++;
             }
 
             // wrap children in end bracket
-            cout << "]";
+            myfile << "]";
 
             // print closing brace
-            cout << endl << "}" << endl;
+            myfile << endl << "}" << endl;
             break;
     }
-
+    myfile.close();
     return 0;
 }
 
@@ -482,6 +496,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
     // iterate through each director key
     int counter = 0;
+    directorKey = malloc(60);
     while (getDirectorAtOffset(offset, parent, leftPage, rightPage, directorKey, attribute) != -1) {
         leftPageNum = leftPage;
 
@@ -489,7 +504,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
         // if key < the director key go left
         if (comparisonResult == -1) {
-            child = malloc(PAGE_SIZE);
+            if (child == NULL) child = malloc(PAGE_SIZE);
             ixfileHandle.getHandle()->readPage(leftPage, child);
             return 0;
         }
@@ -499,7 +514,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
     // key is greater than the last director, therefore enter into the last page, else is an empty page (edge case)
     if (counter != 0) {
-        child = malloc(PAGE_SIZE);
+        if (child == NULL) child = malloc(PAGE_SIZE);
         ixfileHandle.getHandle()->readPage(rightPage, child);
         leftPageNum = rightPage;
     }
@@ -539,7 +554,7 @@ RC IndexManager::splitChild(void* child, void *parent
     int directorSize;
 
     // variables used for director creation
-    void *directorKey;
+    void *directorKey = NULL;;
     int directorKeyLength;
 
     // used for special emtpy left nodes
@@ -694,8 +709,6 @@ RC IndexManager::splitChild(void* child, void *parent
  
             break;
         case TypeNode:
-            //printBtree(ixFileHandle, attribute);
-
             switch (attribute.type) {
                 case TypeInt:
                 case TypeReal:
@@ -771,7 +784,8 @@ RC IndexManager::splitChild(void* child, void *parent
             memcpy(directorKey, (char*)rightPage, keySize);
 
             // update the parent with a new director, insertDirector will automatically update freespace
-            if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
+            
+            if(insertDirector(parent, directorKey, attribute, rightPageNum, ixFileHandle)) {
                 return -1;
             }
             // now lets remove the first director from the right page
@@ -890,7 +904,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     void *director;
     int size = 0;
     int offset = 0;
-    void *extractionKey;
+    void *extractionKey = NULL;
 
     // create the director and save its length
     switch(attribute.type) {
@@ -902,7 +916,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
             size += sizeof(int);
             memcpy((char *) director + size, &nextPageNum, sizeof(int));
             size += sizeof(int);
-
+            
+            extractionKey = malloc(sizeof(int));
             int leftPage, rightPage, directorKey, comparisonKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
                 // compare the keys
@@ -926,7 +941,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
 
             memcpy((char*)director + size, &nextPageNum, sizeof(int));
             size += sizeof(int);
-
+            
+            extractionKey = malloc(sizeof(int) + length);
             int leftPage, rightPage, directorKey, comparisonKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
                 // compare the keys
@@ -966,10 +982,11 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     // free director
     if (director != NULL) free(director);
     if (shiftData != NULL) free(shiftData);
+    if (extractionKey != NULL) free(extractionKey);
     return 0;
 }
 
-RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* &key, const Attribute &attribute) {
+RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, int &rightPointer, void* key, const Attribute &attribute) {
     int freeSpace = IXFileHandle::getFreeSpace(node);
     int freeSpaceOffset = IXFileHandle::getFreeSpaceOffset(freeSpace);
 
@@ -986,7 +1003,6 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
 
     switch(attribute.type) {
         case TypeInt:
-            key = malloc(sizeof(int));
             memcpy(&leftPointer, (char*) node + offset, sizeof(int));
             offset += sizeof(int);
             memcpy((char *) key, (char*) node + offset, sizeof(int));
@@ -994,7 +1010,6 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
             memcpy(&rightPointer, (char*) node + offset, sizeof(int));
             break;
         case TypeReal:
-            key = malloc(sizeof(int));
             memcpy(&leftPointer, (char*) node + offset, sizeof(int));
             offset += sizeof(int);
             memcpy((char*)key, (char*) node + offset, sizeof(float));
@@ -1011,7 +1026,6 @@ RC IndexManager::getDirectorAtOffset(int &offset, void* node, int &leftPointer, 
             memcpy(&length, (char*) node + offset, sizeof(int));
 
             // copy key from node into key
-            key = malloc(sizeof(int) + length);
             memcpy(key, (char*) node + offset, sizeof(int) + length);
             offset += sizeof(int) + length;
 
@@ -1081,11 +1095,13 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
         if (comparisonResult == -1) {
             // calculate the size of the shifting data and set the newOffset
             // to the previous
-            sizeOfShiftedData = freeSpaceOffset - nextKeyOffset;
-            newOffset = nextKeyOffset;
+            int startOfOffset = nextKeyOffset - keySize;
+            int sizeOfNewEntry = keySize + (3 * sizeof(int));
+            sizeOfShiftedData = freeSpaceOffset - startOfOffset;
+            newOffset = startOfOffset;
 
             // lastly we need to build the new data that will be inserted
-            createNewLeafEntry(newData, key, attribute, rid);
+            sizeOfNewData = createNewLeafEntry(newData, key, attribute, rid);
 
             // free the comparison key
             if (comparisonKey != NULL) free(comparisonKey);
@@ -1238,8 +1254,7 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
                 int deleteLength;
                 if (ridCount > 1) {
                     deleteLength = RID_SIZE;
-                }
-                else {
+                } else {
                     deleteLength = RID_SIZE + keySize + sizeof(int);
                 }
 
@@ -1247,9 +1262,10 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
                 memset((char*)child + (nextKeyOffset - deleteLength), 0, shiftSize + deleteLength);
 
                 // copy over the previous RID and key and upate the freespace
-                memcpy((char*)child + (nextKeyOffset - RID_SIZE), shiftContent, shiftSize);
+                memcpy((char*)child + (nextKeyOffset - deleteLength), shiftContent, shiftSize);
                 ixFileHandle.setFreeSpace(child, freeSpace + deleteLength);
-
+                free(shiftContent);
+                break;
             }
         } else if (comparisonResult == -1) {
             // key does not exist in list
@@ -1587,6 +1603,7 @@ IX_ScanIterator::IX_ScanIterator()
 
 IX_ScanIterator::~IX_ScanIterator()
 {
+    free(leafNode);
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
@@ -1845,10 +1862,6 @@ RID IX_ScanIterator::getNextRid() {
 
 RC IX_ScanIterator::close()
 {
-    if (leafNode != NULL) {
-        free(leafNode);
-    }
-
     return 0;
 }
 
@@ -1945,7 +1958,7 @@ int IXFileHandle::getRightPointer(void *data) {
 
 bool IXFileHandle::isLeftNodeNull(void *node, int offset, int &childPageNum) {
     memcpy(&childPageNum, (char *) node + offset, sizeof(int));
-    return !childPageNum ? true : false;
+    return childPageNum < 0? true : false;
 }
 
 bool IXFileHandle::isRightNodeNull(void *node, const Attribute &attribute, int offset, int &childPageNum) {
@@ -1957,7 +1970,7 @@ bool IXFileHandle::isRightNodeNull(void *node, const Attribute &attribute, int o
         offset += sizeof(int);
     }
     memcpy(&childPageNum, (char *) node + offset, sizeof(int));
-    return !childPageNum ? true : false;
+    return childPageNum < 0 ? true : false;
 }
 
 void IX_ScanIterator::setLowKeyValues(const void *lowK, bool lowKInc) {
