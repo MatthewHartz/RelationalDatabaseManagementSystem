@@ -61,7 +61,7 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
     FileHandle* handle = ixfileHandle.getHandle();
     void *root =ixfileHandle.getRoot();
-    handle->writePage(0, root);
+    handle->writePage(ixfileHandle.getRootPageNum(), root);
     if (pfm->closeFile(*handle) == -1) return -1;
     delete handle;
 
@@ -477,7 +477,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
     int cKey;
     memcpy(&cKey, (char *) key, sizeof(int));
 
-    void *directorKey;
+    void *directorKey = NULL;
     int leftPage, rightPage;
 
     // iterate through each director key
@@ -531,6 +531,7 @@ RC IndexManager::splitChild(void* child, void *parent
     int shiftedSize;
 
     // variables for non-leaf nodes
+    int prevDirectorOffset = 0;
     int currentDirectorOffset = 0;
     int nextDirectorOffset = 0;
     int oldRootPageNum;
@@ -540,6 +541,10 @@ RC IndexManager::splitChild(void* child, void *parent
     // variables used for director creation
     void *directorKey;
     int directorKeyLength;
+
+    // used for special emtpy left nodes
+    void *shiftData = NULL;
+    int shiftSize;
 
     // Get node type
     NodeType nodeType = IXFileHandle::getNodeType(child);
@@ -587,9 +592,12 @@ RC IndexManager::splitChild(void* child, void *parent
                     // determine which side to split on key
                     if ((SPLIT_THRESHOLD - currentDirectorOffset)
                             > (nextDirectorOffset - SPLIT_THRESHOLD)) {
-                        splitPosition = nextDirectorOffset;
+                        // added an additoinal sizeof int to give us the director only
+                        splitPosition = nextDirectorOffset + sizeof(int);
+                        //prevDirectorOffset = currentDirectorOffset + sizeof(int);
                     } else {
-                        splitPosition = currentDirectorOffset;
+                        splitPosition = currentDirectorOffset + sizeof(int);
+                        prevDirectorOffset += sizeof(int);
                         memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
                         directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
                     }
@@ -597,12 +605,14 @@ RC IndexManager::splitChild(void* child, void *parent
                 }
 
                 // shift to the nextDirector
+                prevDirectorOffset = currentDirectorOffset;
                 currentDirectorOffset = nextDirectorOffset;
             }
             // Initialize right page
             rightPageNum = ixFileHandle.getAvailablePageNumber();
             rightPage = malloc(PAGE_SIZE);
             ixFileHandle.initializeNewNode(rightPage, TypeNode);
+            ixFileHandle.getHandle()->appendPage(rightPage);
 
             // Save copy data to right page
             shiftedSize = freeSpaceOffset - splitPosition;
@@ -617,7 +627,29 @@ RC IndexManager::splitChild(void* child, void *parent
             memset((char *) child + splitPosition, 0, shiftedSize);
 
             // update freeSpace
-            ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
+            ixFileHandle.setFreeSpace(child, ixFileHandle.getFreeSpace(child) + shiftedSize);
+
+            // here we need to add a special node to the rightPage that is empty
+            /*
+            specialNode = malloc(PAGE_SIZE);
+            childsRightMostPage = malloc(PAGE_SIZE);
+            specialNodePageNum = ixFileHandle.getAvailablePageNumber();
+            memcpy(&childsRightMostPageNum, (char *) child + (splitPosition - sizeof(int)), sizeof(int));
+            
+            // read in the childs rightmost page and link it to the new empty node
+            ixFileHandle.getHandle()->readPage(childsRightMostPageNum, childsRightMostPage); 
+
+            // now link the the leaf nodes
+            ixFileHandle.setRightPointer(specialNode, ixFileHandle.getRightPointer(childsRightMostPage)); 
+            ixFileHandle.setRightPointer(childsRightMostPage, specialNodePageNum);
+
+            // write the nodes to file
+            ixFileHandle.getHandle()->appendPage(specialNode);
+            ixFileHandle.writeNode(childsRightMostPageNum, childsRightMostPage);
+
+            // free the memory allocated
+            if (specialNode != NULL) free(specialNode);
+            if (childsRightMostPage != NULL) free(childsRightMostPage);*/
 
             // update the parent with a new director, insertDirector will automatically update freespace
             oldRootPageNum = ixFileHandle.getRootPageNum();
@@ -625,7 +657,7 @@ RC IndexManager::splitChild(void* child, void *parent
             rootOffset += sizeof(int);
 
             // insert the directorKey into the new root
-            memcpy((char *) parent + rootOffset, (char *) rightPage + sizeof(int), directorSize); 
+            memcpy((char *) parent + rootOffset, (char *) rightPage, directorSize); 
             rootOffset += directorSize;
 
             // here we insert the right page num and increment the offset
@@ -634,6 +666,15 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // update the free space
             ixFileHandle.setFreeSpace(parent, DEFAULT_FREE - rootOffset);
+
+            // now lets remove the the root director from the right page
+            shiftSize = shiftedSize - directorSize;
+            shiftData = malloc(shiftedSize);
+            memcpy((char *) shiftData, (char *) rightPage + directorSize, shiftSize);
+            memcpy((char *) rightPage, (char *) shiftData, shiftSize);
+            memset((char *) rightPage + shiftSize, 0, directorSize);
+            ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) + directorSize);
+            if (shiftData != NULL) free(shiftData);
 
             // here we have to append the new root to the file
             ixFileHandle.writeNode(parentPageNum, parent);
@@ -645,8 +686,7 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // I think here we need to write to write our pages to file for all pages
             ixFileHandle.getHandle()->writePage(childPageNum, child);
-            ixFileHandle.getHandle()->appendPage(rightPage);
-
+            ixFileHandle.writeNode(rightPageNum, rightPage); 
             // free up the right page
             if (rightPage != NULL) free(rightPage);
 
@@ -686,9 +726,9 @@ RC IndexManager::splitChild(void* child, void *parent
                     // determine which side to split on key
                     if ((SPLIT_THRESHOLD - currentDirectorOffset)
                             > (nextDirectorOffset - SPLIT_THRESHOLD)) {
-                        splitPosition = nextDirectorOffset;
+                        splitPosition = nextDirectorOffset + sizeof(int);
                     } else {
-                        splitPosition = currentDirectorOffset;
+                        splitPosition = currentDirectorOffset + sizeof(int);
                         memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
                         directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
                     }
@@ -719,7 +759,7 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
             // create key for insert into director using the key at the beginning of the split
-            memcpy(&directorKeyLength, (char*)rightPage + currentKeyOffset, keyLengthSize);
+            memcpy(&directorKeyLength, (char*)rightPage + (currentKeyOffset - sizeof(int)), keyLengthSize);
             // Tease out the key from the node
             if (keyLengthSize != 0) {
                 keySize = sizeof(int) + keyLength;
@@ -734,11 +774,17 @@ RC IndexManager::splitChild(void* child, void *parent
             if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
                 return -1;
             }
+            // now lets remove the first director from the right page
+            shiftSize = shiftedSize - directorSize;
+            shiftData = malloc(shiftedSize);
+            memcpy((char *) shiftData, (char *) rightPage + directorSize, shiftSize);
+            memcpy((char *) rightPage, (char *) shiftData, shiftSize);
+            memset((char *) rightPage + shiftSize, 0, directorSize);
+            ixFileHandle.setFreeSpace(rightPage, ixFileHandle.getFreeSpace(rightPage) + directorSize);
+            if (shiftData != NULL) free(shiftData);
 
             // here we have to append the new root to the file
             ixFileHandle.writeNode(parentPageNum, parent);
-            ixFileHandle.setRoot(parent);
-            ixFileHandle.setRootPageNum(parentPageNum);
 
             // I think here we need to write to write our pages to file for all pages
             ixFileHandle.getHandle()->writePage(childPageNum, child);
