@@ -85,10 +85,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
             // if parent != root, free
             if (parentPageNum != ixFileHandle.getRootPageNum()) {
-                free(parent);
+                if (parent != NULL) free(parent);
             }
 
-            free(child);
+            if (child != NULL) free(child);
             return insertEntry(ixFileHandle, attribute, key, rid);
         }
 
@@ -158,8 +158,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             ixFileHandle.setRoot(parent);
 
             // free the new child nodes
-            free(leftPointerData);
-            free(rightPointerData);
+            if (leftPointerData != NULL) free(leftPointerData);
+            if (rightPointerData != NULL) free(rightPointerData);
 
             // Re-run insert Entry with the newly added root key and pages
             return insertEntry(ixFileHandle, attribute, key, rid);
@@ -185,10 +185,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
         // if parent != root, free
         if (parentPageNum != ixFileHandle.getRootPageNum()) {
-            free(parent);
+            if (parent != NULL) free(parent);
         }
 
-        free(child);
+        if (child != NULL) free(child);
 
         // Now the parent and children have been created/modified, reinsert into tree
         return insertEntry(ixFileHandle, attribute, key, rid);
@@ -207,10 +207,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
     // if parent != root, free
     if (parentPageNum != ixFileHandle.getRootPageNum()) {
-        free(parent);
+        if (parent != NULL) free(parent);
     }
 
-    free(child);
+    if (child != NULL) free(child);
     return 0;
 }
 
@@ -505,7 +505,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
     }
 
     // free the directorKey
-    free(directorKey);
+    if (directorKey != NULL) free(directorKey);
 
     return 0;
 }
@@ -536,6 +536,10 @@ RC IndexManager::splitChild(void* child, void *parent
     int oldRootPageNum;
     int rootOffset = 0;
     int directorSize;
+
+    // variables used for director creation
+    void *directorKey;
+    int directorKeyLength;
 
     // Get node type
     NodeType nodeType = IXFileHandle::getNodeType(child);
@@ -644,7 +648,7 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.getHandle()->appendPage(rightPage);
 
             // free up the right page
-            free(rightPage);
+            if (rightPage != NULL) free(rightPage);
 
             //printBtree(ixFileHandle, attribute);
  
@@ -714,6 +718,18 @@ RC IndexManager::splitChild(void* child, void *parent
             // update freeSpace
             ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
+            // create key for insert into director using the key at the beginning of the split
+            memcpy(&directorKeyLength, (char*)rightPage + currentKeyOffset, keyLengthSize);
+            // Tease out the key from the node
+            if (keyLengthSize != 0) {
+                keySize = sizeof(int) + keyLength;
+            } else {
+                keySize = sizeof(int);
+            }
+
+            directorKey = malloc(keySize);
+            memcpy(directorKey, (char*)rightPage, keySize);
+
             // update the parent with a new director, insertDirector will automatically update freespace
             if(insertDirector(parent, key, attribute, rightPageNum, ixFileHandle)) {
                 return -1;
@@ -729,7 +745,7 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.getHandle()->appendPage(rightPage);
 
             // free up the right page
-            free(rightPage);
+            if (rightPage != NULL) free(rightPage);
             break;
         case TypeLeaf:
             // Save the number of bits for key length (this will be used to read in length size
@@ -791,9 +807,6 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
             // create key for insert into director using the key at the beginning of the split
-            void *directorKey;
-            int directorKeyLength;
-
             memcpy(&directorKeyLength, (char*)rightPage + currentKeyOffset, keyLengthSize);
             // Tease out the key from the node
             if (keyLengthSize != 0) {
@@ -820,7 +833,7 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // free up the right page
             if (directorKey != NULL) free(directorKey);
-            free(rightPage);
+            if (rightPage != NULL) free(rightPage);
             break;
     }
 
@@ -905,8 +918,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     ixFileHandle.setFreeSpace(node, freeSpace);
 
     // free director
-    free(director);
-    free(shiftData);
+    if (director != NULL) free(director);
+    if (shiftData != NULL) free(shiftData);
     return 0;
 }
 
@@ -1029,7 +1042,7 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             createNewLeafEntry(newData, key, attribute, rid);
 
             // free the comparison key
-            free(comparisonKey);
+            if (comparisonKey != NULL) free(comparisonKey);
             break;
         } else if (comparisonResult == 0) {
             // here we must insert a new RID into the list
@@ -1055,13 +1068,13 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             memcpy((char *) newData + newDataOffset, &rid.slotNum, sizeof(int));
 
             // free the comparison key
-            free(comparisonKey);
+            if (comparisonKey != NULL) free(comparisonKey);
             break;
         } else {
             nextKeyOffset = getNextKeyOffset(nextKeyOffset, child);
 
             // free the comparison key
-            free(comparisonKey);
+            if (comparisonKey != NULL) free(comparisonKey);
         }
     }
 
@@ -1087,8 +1100,8 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
     ixFileHandle.setFreeSpace(child, freeSpace - sizeOfNewData);
 
     // free memory
-    free(newData);
-    free(shiftedData);
+    if (newData != NULL) free(newData);
+    if (shiftedData != NULL) free(shiftedData);
 
     return 0;
 }
@@ -1201,7 +1214,7 @@ RC IndexManager::deleteFromLeaf(IXFileHandle &ixFileHandle
     }
 
     // free the comparison key
-    free(comparisonKey);
+    if (comparisonKey != NULL) free(comparisonKey);
 
     return 0;
 }
