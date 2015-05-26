@@ -120,13 +120,35 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
             // Write left, key, right data to the parent page
             int offSet = 0;
-            int keyLength = getKeyLength(key, attribute);
-            memcpy((char*) parent + offSet, &leftPointerNum, sizeof(int));
-            offSet += sizeof(int);
-            memcpy((char*) parent + offSet, key, keyLength);
-            offSet += keyLength;
-            memcpy((char*) parent + offSet, &rightPointerNum, sizeof(int));
-            offSet += sizeof(int);
+
+            switch (attribute.type) {
+                case TypeReal:
+                case TypeInt:
+                    memcpy((char*) parent + offSet, &leftPointerNum, sizeof(int));
+                    offSet += sizeof(int);
+                    memcpy((char*) parent + offSet, key, sizeof(int));
+                    offSet += sizeof(int);
+                    memcpy((char*) parent + offSet, &rightPointerNum, sizeof(int));
+                    offSet += sizeof(int);
+
+                    break;
+                case TypeVarChar:
+                    memcpy((char*) parent + offSet, &leftPointerNum, sizeof(int));
+                    offSet += sizeof(int);
+
+                    int length;
+                    memcpy(&length, (char*)key, sizeof(int));
+                    int keySize = length + sizeof(int);
+                    memcpy((char*)parent + offSet, (char*)key, keySize);
+                    offSet += keySize;
+
+                    memcpy((char*) parent + offSet, &rightPointerNum, sizeof(int));
+                    offSet += sizeof(int);
+
+                    break;
+            }
+
+
 
             // update freespace
             int freeSpace = ixFileHandle.getFreeSpace(parent);
@@ -801,13 +823,6 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
 
             int leftPage, rightPage, directorKey, comparisonKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
-                // test if director page is zero in order to break out
-//                if (rightPage == 0) {
-//                    //return 0;
-//                    offset += sizeof(int);
-//                    break;
-//                }
-
                 // compare the keys
                 int comparisonResult = compareKeys(key, extractionKey, attribute);
 
@@ -815,17 +830,27 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
                 if (comparisonResult == -1) {
                     break;
                 }
-
-                //offset += 8;
             }
             break;
         }
         case TypeVarChar: {
             int length;
             memcpy(&length, (char *) key, sizeof(int));
-            //director = malloc(sizeof(int) + length));
-            //memcpy(&director)
-            size = length + sizeof(int);
+            size = sizeof(int) + length;
+            director = malloc(size);
+            memcpy(director, (char *)key, size);
+
+            int leftPage, rightPage, directorKey, comparisonKey;
+            while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
+                // compare the keys
+                int comparisonResult = compareKeys(key, extractionKey, attribute);
+
+                // if our key is less than the pointer, we found our target position
+                if (comparisonResult == -1) {
+                    break;
+                }
+            }
+
             break;
         }
         default:
@@ -971,7 +996,6 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
             newOffset = nextKeyOffset;
 
             // lastly we need to build the new data that will be inserted
-            newData = malloc((2 *sizeof(int)) + RID_SIZE);
             createNewLeafEntry(newData, key, attribute, rid);
 
             // free the comparison key
@@ -1017,7 +1041,6 @@ RC IndexManager::insertIntoLeaf(IXFileHandle &ixFileHandle
         // just insert at the end
         newOffset = freeSpaceOffset;
         // lastly we need to build the new data that will be inserted
-        newData = malloc((2 *sizeof(int)) + RID_SIZE);
         sizeOfNewData = createNewLeafEntry(newData, key, attribute, rid);
     }
     // we need to shift the data to the right and insert the new data
@@ -1215,13 +1238,15 @@ int IndexManager::getNumberOfRids(void *node, int RIDnumOffset) {
     return numberOfRIDs;
 }
 
-int IndexManager::createNewLeafEntry(void *data, const void *key, const Attribute &attribute, const RID &rid) {
+int IndexManager::createNewLeafEntry(void *&data, const void *key, const Attribute &attribute, const RID &rid) {
     int numRids = 1;
     int offset = 0;
 
     switch (attribute.type) {
         case TypeInt:
         case TypeReal:
+            data = malloc((2 *sizeof(int)) + RID_SIZE);
+
             memcpy((char *) data + offset, key, sizeof(int));
             offset += sizeof(int);
             memcpy((char *) data + offset, &numRids, sizeof(int));
@@ -1231,8 +1256,23 @@ int IndexManager::createNewLeafEntry(void *data, const void *key, const Attribut
             memcpy((char *) data + offset, &rid.slotNum, sizeof(int));
             offset += sizeof(int);
             break;
-        case TypeVarChar:
+        case TypeVarChar: {
+            int length;
+            memcpy(&length, (char*) key + offset, sizeof(int));
+            int keySize = length + sizeof(int);
+
+            data = malloc(keySize);
+            memcpy((char *) data, (char*)key, keySize);
+            offset += keySize;
+
+            memcpy((char *) data + offset, &numRids, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char *) data + offset, &rid.pageNum, sizeof(int));
+            offset += sizeof(int);
+            memcpy((char *) data + offset, &rid.slotNum, sizeof(int));
+            offset += sizeof(int);
             break;
+        }
         default:
             break;
     }
@@ -1259,7 +1299,7 @@ int IndexManager::getKeyLength(const void *key, Attribute attr) {
             break;
         case TypeVarChar:
             memcpy(&length, (char*) key, sizeof(int));
-            length += 4;
+            length += sizeof(int);
             break;
         default:
             return -1;
