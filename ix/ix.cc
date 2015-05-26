@@ -532,7 +532,7 @@ RC IndexManager::splitChild(void* child, void *parent
 
     // variables for non-leaf nodes
     int currentDirectorOffset = 0;
-    int nextDirectorOffset;
+    int nextDirectorOffset = 0;
     int oldRootPageNum;
     int rootOffset = 0;
     int directorSize;
@@ -564,15 +564,19 @@ RC IndexManager::splitChild(void* child, void *parent
                     return -1;
             }
             // here a directorSize is assumed to be the left page and the key only
-             while (currentDirectorOffset < freeSpaceOffset) {
-                memcpy(&keyLength, (char*)child + currentDirectorOffset, keyLengthSize);
+            while (currentDirectorOffset < freeSpaceOffset) {
+                // skip the first pointer
+                nextDirectorOffset += sizeof(int);
+
+                memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
                 // Tease out the key from the node
                 if (keyLengthSize != 0) {
                     directorSize = sizeof(int) + keyLength;
                 } else {
                     directorSize = sizeof(int);
                 }
-                nextDirectorOffset = currentDirectorOffset + sizeof(int) + directorSize; 
+
+                nextDirectorOffset += directorSize;
 
                 // FOUND SPLIT POINT
                 if (nextDirectorOffset >= SPLIT_THRESHOLD) {
@@ -588,7 +592,8 @@ RC IndexManager::splitChild(void* child, void *parent
                     break;
                 }
 
-                currentDirectorOffset += sizeof(int) + directorSize;
+                // shift to the nextDirector
+                currentDirectorOffset = nextDirectorOffset;
             }
             // Initialize right page
             rightPageNum = ixFileHandle.getAvailablePageNumber();
@@ -659,15 +664,18 @@ RC IndexManager::splitChild(void* child, void *parent
                     return -1;
             }
             // here a directorSize is assumed to be the left page and the key only
-             while (currentDirectorOffset < freeSpaceOffset) {
-                memcpy(&keyLength, (char*)child + currentDirectorOffset, keyLengthSize);
+            while (currentDirectorOffset < freeSpaceOffset) {
+                // skip the first pointer
+                nextDirectorOffset += sizeof(int);
+
+                memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
                 // Tease out the key from the node
                 if (keyLengthSize != 0) {
                     directorSize = sizeof(int) + keyLength;
                 } else {
                     directorSize = sizeof(int);
                 }
-                nextDirectorOffset = currentDirectorOffset + sizeof(int) + directorSize;
+                nextDirectorOffset += directorSize;
 
                 // FOUND SPLIT POINT
                 if (nextDirectorOffset >= SPLIT_THRESHOLD) {
@@ -683,7 +691,8 @@ RC IndexManager::splitChild(void* child, void *parent
                     break;
                 }
 
-                currentDirectorOffset += sizeof(int) + directorSize;
+                // update current director offset
+                currentDirectorOffset = nextDirectorOffset;
             }
             // Initialize right page
             rightPageNum = ixFileHandle.getAvailablePageNumber();
@@ -737,8 +746,6 @@ RC IndexManager::splitChild(void* child, void *parent
             }
 
             // Iterate over keys
-
-
             while (currentKeyOffset < freeSpaceOffset) {
                 memcpy(&keyLength, (char*)child + currentKeyOffset, keyLengthSize);
                 // Tease out the key from the node
