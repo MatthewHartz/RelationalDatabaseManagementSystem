@@ -550,7 +550,7 @@ RC IndexManager::splitChild(void* child, void *parent
     int directorSize;
 
     // variables used for director creation
-    void *directorKey = NULL;;
+    void *directorKey = NULL;
     int directorKeyLength;
 
     // used for special emtpy left nodes
@@ -600,18 +600,6 @@ RC IndexManager::splitChild(void* child, void *parent
 
                 // FOUND SPLIT POINT
                 if (nextDirectorOffset >= SPLIT_THRESHOLD) {
-                    // determine which side to split on key
-//                    if ((SPLIT_THRESHOLD - currentDirectorOffset)
-//                            > (nextDirectorOffset - SPLIT_THRESHOLD)) {
-//                        // added an additoinal sizeof int to give us the director only
-//                        splitPosition = nextDirectorOffset + sizeof(int);
-//                        //prevDirectorOffset = currentDirectorOffset + sizeof(int);
-//                    } else {
-//                        splitPosition = currentDirectorOffset + sizeof(int);
-//                        prevDirectorOffset += sizeof(int); // TODO don't think previous director has a point
-//                        memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
-//                        directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
-//                    }
                     splitPosition = currentDirectorOffset + sizeof(int);
                     break;
                 }
@@ -640,28 +628,6 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // update freeSpace
             ixFileHandle.setFreeSpace(child, ixFileHandle.getFreeSpace(child) + shiftedSize);
-
-            // here we need to add a special node to the rightPage that is empty
-            /*
-            specialNode = malloc(PAGE_SIZE);
-            childsRightMostPage = malloc(PAGE_SIZE);
-            specialNodePageNum = ixFileHandle.getAvailablePageNumber();
-            memcpy(&childsRightMostPageNum, (char *) child + (splitPosition - sizeof(int)), sizeof(int));
-            
-            // read in the childs rightmost page and link it to the new empty node
-            ixFileHandle.getHandle()->readPage(childsRightMostPageNum, childsRightMostPage); 
-
-            // now link the the leaf nodes
-            ixFileHandle.setRightPointer(specialNode, ixFileHandle.getRightPointer(childsRightMostPage)); 
-            ixFileHandle.setRightPointer(childsRightMostPage, specialNodePageNum);
-
-            // write the nodes to file
-            ixFileHandle.getHandle()->appendPage(specialNode);
-            ixFileHandle.writeNode(childsRightMostPageNum, childsRightMostPage);
-
-            // free the memory allocated
-            if (specialNode != NULL) free(specialNode);
-            if (childsRightMostPage != NULL) free(childsRightMostPage);*/
 
             // update the parent with a new director, insertDirector will automatically update freespace
             oldRootPageNum = ixFileHandle.getRootPageNum();
@@ -733,15 +699,7 @@ RC IndexManager::splitChild(void* child, void *parent
 
                 // FOUND SPLIT POINT
                 if (nextDirectorOffset >= SPLIT_THRESHOLD) {
-                    // determine which side to split on key
-                    if ((SPLIT_THRESHOLD - currentDirectorOffset)
-                            > (nextDirectorOffset - SPLIT_THRESHOLD)) {
-                        splitPosition = nextDirectorOffset + sizeof(int);
-                    } else {
-                        splitPosition = currentDirectorOffset + sizeof(int);
-                        memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
-                        directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
-                    }
+                    splitPosition = currentDirectorOffset + sizeof(int);
                     break;
                 }
 
@@ -768,7 +726,7 @@ RC IndexManager::splitChild(void* child, void *parent
             // update freeSpace
             ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
-            // create key for insert into director using the key at the beginning of the split
+            // create new director to be inserted into parent
             memcpy(&directorKeyLength, (char*)rightPage + (currentKeyOffset - sizeof(int)), keyLengthSize);
             // Tease out the key from the node
             if (keyLengthSize != 0) {
@@ -781,10 +739,10 @@ RC IndexManager::splitChild(void* child, void *parent
             memcpy(directorKey, (char*)rightPage, keySize);
 
             // update the parent with a new director, insertDirector will automatically update freespace
-            
             if(insertDirector(parent, directorKey, attribute, rightPageNum, ixFileHandle)) {
                 return -1;
             }
+
             // now lets remove the first director from the right page
             shiftSize = shiftedSize - directorSize;
             shiftData = malloc(shiftedSize);
@@ -827,7 +785,6 @@ RC IndexManager::splitChild(void* child, void *parent
                 } else {
                     keySize = sizeof(int);
                 }
-
                 nextKeyOffset = getNextKeyOffset(currentKeyOffset + keySize, child);
                 keySize = nextKeyOffset - currentKeyOffset;
 
@@ -839,7 +796,6 @@ RC IndexManager::splitChild(void* child, void *parent
                             ? nextKeyOffset : currentKeyOffset;
                     break;
                 }
-
                 currentKeyOffset += keySize;
             }
 
@@ -871,7 +827,6 @@ RC IndexManager::splitChild(void* child, void *parent
             } else {
                 keySize = sizeof(int);
             }
-
             directorKey = malloc(keySize);
             memcpy(directorKey, (char*)rightPage, keySize);
 
@@ -901,6 +856,7 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
     void *director;
     int size = 0;
     int offset = 0;
+    int currentOffset = 0;
     void *extractionKey = NULL;
 
     // create the director and save its length
@@ -915,7 +871,10 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
             size += sizeof(int);
             
             extractionKey = malloc(sizeof(int));
-            int leftPage, rightPage, directorKey, comparisonKey;
+
+            currentOffset = offset + sizeof(int); // sizeof(int) to compensate for first page
+
+            int leftPage, rightPage, directorKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
                 // compare the keys
                 int comparisonResult = compareKeys(key, extractionKey, attribute);
@@ -924,6 +883,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
                 if (comparisonResult == -1) {
                     break;
                 }
+
+                currentOffset = offset + sizeof(int); // sizeof(int) to compensate for first page
             }
             break;
         }
@@ -940,7 +901,10 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
             size += sizeof(int);
             
             extractionKey = malloc(sizeof(int) + length);
-            int leftPage, rightPage, directorKey, comparisonKey;
+
+            currentOffset = offset + sizeof(int); // sizeof(int) to compensate for first page
+
+            int leftPage, rightPage, directorKey;
             while(getDirectorAtOffset(offset, node, leftPage, rightPage, extractionKey, attribute) != -1) {
                 // compare the keys
                 int comparisonResult = compareKeys(key, extractionKey, attribute);
@@ -949,6 +913,8 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
                 if (comparisonResult == -1) {
                     break;
                 }
+
+                currentOffset = offset + sizeof(int); // sizeof(int) to compensate for first page
             }
 
             break;
@@ -959,18 +925,18 @@ RC IndexManager::insertDirector(void *node, const void *key, const Attribute &at
 
     // Calculate the size of the node data that needs to be shifted
     int freeSpace = ixFileHandle.getFreeSpace(node);
-    int shiftSize = DEFAULT_FREE - freeSpace - offset;
+    int shiftSize = DEFAULT_FREE - freeSpace - currentOffset;
     void* shiftData = malloc(shiftSize);
 
     // Save data into the temp value
-    memcpy((char*)shiftData, (char*)node + offset, shiftSize);
+    memcpy((char*)shiftData, (char*)node + currentOffset, shiftSize);
 
     // insert the new director here
-    memcpy((char*)node + offset, (char*)director, size);
-    offset += size;
+    memcpy((char*)node + currentOffset, (char*)director, size);
+    currentOffset += size;
 
     // reinsert the shifted data
-    memcpy((char*)node + offset, shiftData, shiftSize);
+    memcpy((char*)node + currentOffset, shiftData, shiftSize);
 
     // update Freespace
     freeSpace -= size;
@@ -1696,7 +1662,8 @@ void IX_ScanIterator::getVarCharType(void *&type, RID &rid, void *node, int &off
     }
     memcpy((char *) type, (char *) node + offset, sizeof(int));
     offset += sizeof(int);
-    memcpy((char *) type + sizeof(int), (char *) node + offset, sizeof(int));
+    memcpy((char *) type + offset, (char *) node + offset, varCharLength);
+    offset += varCharLength;
 }
 
 bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
@@ -1741,7 +1708,6 @@ bool IX_ScanIterator::compareInts(void *incomingKey, const void *low
     }
 
 }
-
 
 bool IX_ScanIterator::compareReals(void *incomingKey, const void *low
                                                     , const void *high
@@ -1796,20 +1762,23 @@ bool IX_ScanIterator::compareVarChars(void *incomingKey, const void *low
 
     // extract the key lengths first
     memcpy(&leafKeySize, (char *) node + offset, sizeof(int));
+    offset += sizeof(int);
+
     leafKey = new char[leafKeySize + 1];
-    memcpy(&leafKey, (char *) node + offset,leafKeySize);
+    memcpy(leafKey, (char *) node + offset,leafKeySize);
     leafKey[leafKeySize] = '\0';
+    offset += leafKeySize;
 
     if (low != NULL) {
         memcpy(&lKeySize, (char *) low, sizeof(int));
         lKey = new char[lKeySize + 1];
-        memcpy(&lKey, (char *) low + sizeof(int), lKeySize);
+        memcpy(lKey, (char *) low + sizeof(int), lKeySize);
         lKey[lKeySize] = '\0';
     }
     if (high != NULL) {
          memcpy(&hKeySize, (char *) high, sizeof(int));
          hKey = new char[hKeySize + 1];
-         memcpy(&hKey, (char *) high + sizeof(int), hKeySize);
+         memcpy(hKey, (char *) high + sizeof(int), hKeySize);
          hKey[hKeySize] = '\0';
     }
     // now we can test our comparisons
@@ -1975,12 +1944,10 @@ void IX_ScanIterator::setLowKeyValues(const void *lowK, bool lowKInc) {
     lowKeyInclusive = lowKInc;
 }
 
-
 void IX_ScanIterator::setHighKeyValues(const void *highK, bool highKInc) {
     highKey = highK;
     highKeyInclusive = highKInc;
 }
-
 
 int IXFileHandle::getAvailablePageNumber() {
     // If there is a page open in freePages use one of those first to reduce File size
