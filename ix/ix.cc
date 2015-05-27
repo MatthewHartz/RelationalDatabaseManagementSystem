@@ -502,6 +502,11 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
         if (comparisonResult == -1) {
             if (child == NULL) child = malloc(PAGE_SIZE);
             ixfileHandle.getHandle()->readPage(leftPage, child);
+
+            // free the directorKey
+            if (directorKey != NULL)
+                free(directorKey);
+
             return 0;
         }
 
@@ -516,7 +521,8 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
     }
 
     // free the directorKey
-    if (directorKey != NULL) free(directorKey);
+    if (directorKey != NULL)
+        free(directorKey);
 
     return 0;
 }
@@ -820,8 +826,7 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.setFreeSpace(child, DEFAULT_FREE - splitPosition);
 
             // create key for insert into director using the key at the beginning of the split
-            memcpy(&directorKeyLength, (char*)rightPage + currentKeyOffset, keyLengthSize);
-            // Tease out the key from the node
+            memcpy(&keyLength, (char*)rightPage, keyLengthSize);
             if (keyLengthSize != 0) {
                 keySize = sizeof(int) + keyLength;
             } else {
