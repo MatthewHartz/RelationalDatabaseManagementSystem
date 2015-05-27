@@ -85,10 +85,16 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
             // if parent != root, free
             if (parentPageNum != ixFileHandle.getRootPageNum()) {
-                if (parent != NULL) free(parent);
+                if (parent != NULL) {
+                    free(parent);
+                    parent = NULL;
+                }
             }
 
-            if (child != NULL) free(child);
+            if (child != NULL) {
+                free(child);
+                child = NULL;
+            }
             return insertEntry(ixFileHandle, attribute, key, rid);
         }
 
@@ -178,10 +184,16 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
         // if parent != root, free
         if (parentPageNum != ixFileHandle.getRootPageNum()) {
-            if (parent != NULL) free(parent);
+            if (parent != NULL) {
+                free(parent);
+                parent = NULL;
+            }
         }
 
-        if (child != NULL) free(child);
+        if (child != NULL) {
+            free(child);
+            child = NULL;
+        }
 
         // Now the parent and children have been created/modified, reinsert into tree
         return insertEntry(ixFileHandle, attribute, key, rid);
@@ -200,10 +212,16 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 
     // if parent != root, free
     if (parentPageNum != ixFileHandle.getRootPageNum()) {
-        if (parent != NULL) free(parent);
+        if (parent != NULL) {
+            free(parent);
+            parent = NULL;
+        }
     }
 
-    if (child != NULL) free(child);
+    if (child != NULL) {
+        free(child);
+        child = NULL;
+    }
     return 0;
 }
 
@@ -261,7 +279,10 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
         return -1;
     }
     
-    if (child != NULL) free(child);
+    if (child != NULL) {
+        free(child);
+        child = NULL;
+    }
 
     return 0;
 }
@@ -283,8 +304,8 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     // save the information needed to do a range based scan
     ix_ScanIterator.setHandle(ixfileHandle);
     ix_ScanIterator.setAttribute(attribute);
-    ix_ScanIterator.setLowKeyValues(lowKey, lowKeyInclusive);
-    ix_ScanIterator.setHighKeyValues(highKey, highKeyInclusive);
+    ix_ScanIterator.setLowKeyValues(lowKey, lowKeyInclusive, attribute);
+    ix_ScanIterator.setHighKeyValues(highKey, highKeyInclusive, attribute);
 
     // we need to save the first leaf node in the tree to begin a scan
     void *root = ixfileHandle.getRoot();
@@ -500,7 +521,8 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
         // if key < the director key go left
         if (comparisonResult == -1) {
-            if (child == NULL) child = malloc(PAGE_SIZE);
+            if (child == NULL)
+                child = malloc(PAGE_SIZE);
             ixfileHandle.getHandle()->readPage(leftPage, child);
 
             // free the directorKey
@@ -672,7 +694,10 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.getHandle()->writePage(childPageNum, child);
             ixFileHandle.writeNode(rightPageNum, rightPage); 
             // free up the right page
-            if (rightPage != NULL) free(rightPage);
+            if (rightPage != NULL) {
+                free(rightPage);
+                rightPage = NULL;
+            }
 
             //printBtree(ixFileHandle, attribute);
  
@@ -766,7 +791,10 @@ RC IndexManager::splitChild(void* child, void *parent
             ixFileHandle.getHandle()->appendPage(rightPage);
 
             // free up the right page
-            if (rightPage != NULL) free(rightPage);
+            if (rightPage != NULL) {
+                free(rightPage);
+                rightPage = NULL;
+            }
             break;
         case TypeLeaf:
             // Save the number of bits for key length (this will be used to read in length size
@@ -850,7 +878,10 @@ RC IndexManager::splitChild(void* child, void *parent
 
             // free up the right page
             if (directorKey != NULL) free(directorKey);
-            if (rightPage != NULL) free(rightPage);
+            if (rightPage != NULL) {
+                free(rightPage);
+                rightPage = NULL;
+            }
             break;
     }
 
@@ -1439,6 +1470,8 @@ RC IndexManager::getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Att
 
                 keys.push_back(stringKey);
 
+                delete[] s; // TODO Added this, it may/may not be affect free() for test extra_1
+
                 break;
             }
             default:
@@ -1549,6 +1582,8 @@ RC IndexManager::getKeysInNonLeaf(IXFileHandle &ixFileHandle
 
                 string stringKey(s);
 
+                delete[] s; // TODO Added this, it may/may not be affect free() for test extra_1
+
                 keys.push_back(stringKey);
 
                 break;
@@ -1567,6 +1602,7 @@ IX_ScanIterator::IX_ScanIterator()
     leafNode = malloc(PAGE_SIZE);
     currentLeafOffset = 0;
     keyIndex = 0;
+    hasBegan = false;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
@@ -1613,6 +1649,9 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 
         // compare and and evaluate the return type
         if((*compareTypeFunc)(key, lowKey, highKey, leafNode, keyOffset, lowKeyInclusive, highKeyInclusive)) {
+            // has began
+            hasBegan = true;
+
             // build the RID list
             int numRids;
             memcpy(&numRids, (char*)leafNode + currentLeafOffset, sizeof(int));
@@ -1633,6 +1672,9 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 
             keyIndex++;
             break;
+        } else if (hasBegan) {
+            // we have finished collecting keys
+            return IX_EOF;
         }
         // we need to advance the offset
         currentLeafOffset = IndexManager::getNextKeyOffset(currentLeafOffset, leafNode);
@@ -1833,6 +1875,7 @@ RID IX_ScanIterator::getNextRid() {
 
 RC IX_ScanIterator::close()
 {
+    hasBegan = false;
     return 0;
 }
 
@@ -1944,13 +1987,38 @@ bool IXFileHandle::isRightNodeNull(void *node, const Attribute &attribute, int o
     return childPageNum < 0 ? true : false;
 }
 
-void IX_ScanIterator::setLowKeyValues(const void *lowK, bool lowKInc) {
-    lowKey = lowK;
+void IX_ScanIterator::setLowKeyValues(const void *lowK, bool lowKInc, const Attribute &attribute) {
+    int keySize;
+    if (attribute.length > 4)
+        keySize = attribute.length + sizeof(int);
+    else
+        keySize = attribute.length;
+
+    if (lowK != NULL) {
+        lowKey = malloc(keySize);
+        memcpy((char*)lowKey, (char*)lowK, keySize);
+    }
+    else {
+        lowKey = NULL;
+    }
+
     lowKeyInclusive = lowKInc;
 }
 
-void IX_ScanIterator::setHighKeyValues(const void *highK, bool highKInc) {
-    highKey = highK;
+void IX_ScanIterator::setHighKeyValues(const void *highK, bool highKInc, const Attribute &attribute) {
+    int keySize;
+    if (attribute.length > 4)
+        keySize = attribute.length + sizeof(int);
+    else
+        keySize = attribute.length;
+
+    if (highK != NULL) {
+        highKey = malloc(keySize);
+        memcpy((char*)highKey, (char*)highK, keySize);
+    } else {
+        highKey = NULL;
+    }
+
     highKeyInclusive = highKInc;
 }
 

@@ -125,8 +125,8 @@ class IX_ScanIterator {
         // the Getters and Setters
         void setHandle(IXFileHandle &ixfileHandle) { ixFileHandle = &ixfileHandle; };
         void setAttribute(const Attribute &attr) { attribute = &attr; };
-        void setLowKeyValues(const void *lowKey, bool lowKeyInclusive);
-        void setHighKeyValues(const void *highKey, bool highKeyInclusive);
+        void setLowKeyValues(const void *lowKey, bool lowKeyInclusive, const Attribute &attribute);
+        void setHighKeyValues(const void *highKey, bool highKeyInclusive, const Attribute &attribute);
         void setLeafNode(void *node) { memcpy((char *) leafNode, (char *) node, PAGE_SIZE); };
         void setType(void (*f)(void*&, RID&, void*, int&)) { getKey = f; };
         void setFunc(bool (*f)(void*, const void*, const void*, void*, int, bool, bool)) { compareTypeFunc = f; };
@@ -153,6 +153,7 @@ class IX_ScanIterator {
         bool lowKeyInclusive;
         bool highKeyInclusive;
         int currentLeafOffset;
+        bool hasBegan; // This bool is used to determine whether or not we have entered the range of keys to scan
         void (*getKey)(void*&, RID&, void*, int&);
         bool (*compareTypeFunc)(void*, const void*, const void*, void*, int, bool, bool); 
         vector<RID> keyRids; // this is iterated for single or multiple rids for a key
