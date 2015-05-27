@@ -96,7 +96,7 @@ class IndexManager {
         int createNewLeafEntry(void *&data, const void *key, const Attribute &attribute, const RID &rid);
 
         // The recursive function that will iterate over the tree printing out all the nodes contents
-        RC printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute, int depth) const;
+        RC printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute, int depth, ofstream &myfile) const;
 
         // Collects the keys in a leaf node
         RC getKeysInLeaf(IXFileHandle &ixFileHandle, void *node, const Attribute &attribute, vector<string> &keys) const;

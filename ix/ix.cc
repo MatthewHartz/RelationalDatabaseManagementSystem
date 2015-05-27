@@ -148,8 +148,6 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
                     break;
             }
 
-
-
             // update freespace
             int freeSpace = ixFileHandle.getFreeSpace(parent);
             ixFileHandle.setFreeSpace(parent, freeSpace - offSet);
@@ -164,11 +162,6 @@ RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
             // Re-run insert Entry with the newly added root key and pages
             return insertEntry(ixFileHandle, attribute, key, rid);
         }
-
-        // if parent != root, free
-//        if (parentPageNum != ixFileHandle.getRootPageNum()) {
-//            free(parent);
-//        }
 
         // test if leaf node
         NodeType type = ixFileHandle.getNodeType(child);
@@ -355,17 +348,20 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 
 void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
     void *root = ixFileHandle.getRoot();
+    ofstream myfile("tree.txt");
 
     // do the initial call to printNode at the root
     int depth = 0;
-    printNode(root, ixFileHandle, attribute, depth);
+    printNode(root, ixFileHandle, attribute, depth, myfile);
+
+    myfile.close();
 }
 
-RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute, int depth) const {
+RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribute &attribute, int depth, ofstream &myfile) const {
     vector<string> keys;
     vector<int> pointers;
     string depthString;
-    ofstream myfile("tree.txt");
+
 
     // initialize the depth string, this is used to make the correct justifications
     for (int i = 0; i < depth; i++) {
@@ -424,7 +420,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
                 if (counter > 0) myfile << ",";
                 void *nextNode = malloc(PAGE_SIZE);
                 ixFileHandle.getHandle()->readPage(pointer, nextNode);
-                printNode(nextNode, ixFileHandle, attribute, depth + 1);
+                printNode(nextNode, ixFileHandle, attribute, depth + 1, myfile);
                 free(nextNode);
                 counter++;
             }
@@ -436,7 +432,7 @@ RC IndexManager::printNode(void *node, IXFileHandle &ixFileHandle, const Attribu
             myfile << endl << "}" << endl;
             break;
     }
-    myfile.close();
+
     return 0;
 }
 
@@ -496,7 +492,7 @@ RC IndexManager::getNextNodeByKey(void * &child, void * &parent
 
     // iterate through each director key
     int counter = 0;
-    directorKey = malloc(60);
+    directorKey = malloc(attribute.length + sizeof(int)); // int to compensate for varchar's length field
     while (getDirectorAtOffset(offset, parent, leftPage, rightPage, directorKey, attribute) != -1) {
         leftPageNum = leftPage;
 
@@ -605,22 +601,23 @@ RC IndexManager::splitChild(void* child, void *parent
                 // FOUND SPLIT POINT
                 if (nextDirectorOffset >= SPLIT_THRESHOLD) {
                     // determine which side to split on key
-                    if ((SPLIT_THRESHOLD - currentDirectorOffset)
-                            > (nextDirectorOffset - SPLIT_THRESHOLD)) {
-                        // added an additoinal sizeof int to give us the director only
-                        splitPosition = nextDirectorOffset + sizeof(int);
-                        //prevDirectorOffset = currentDirectorOffset + sizeof(int);
-                    } else {
-                        splitPosition = currentDirectorOffset + sizeof(int);
-                        prevDirectorOffset += sizeof(int);
-                        memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
-                        directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
-                    }
+//                    if ((SPLIT_THRESHOLD - currentDirectorOffset)
+//                            > (nextDirectorOffset - SPLIT_THRESHOLD)) {
+//                        // added an additoinal sizeof int to give us the director only
+//                        splitPosition = nextDirectorOffset + sizeof(int);
+//                        //prevDirectorOffset = currentDirectorOffset + sizeof(int);
+//                    } else {
+//                        splitPosition = currentDirectorOffset + sizeof(int);
+//                        prevDirectorOffset += sizeof(int); // TODO don't think previous director has a point
+//                        memcpy(&keyLength, (char*)child + nextDirectorOffset, keyLengthSize);
+//                        directorSize = keyLengthSize ? sizeof(int) : sizeof(int) + keyLength;
+//                    }
+                    splitPosition = currentDirectorOffset + sizeof(int);
                     break;
                 }
 
                 // shift to the nextDirector
-                prevDirectorOffset = currentDirectorOffset;
+                prevDirectorOffset = currentDirectorOffset; // TODO don't think previous director has a point
                 currentDirectorOffset = nextDirectorOffset;
             }
             // Initialize right page
