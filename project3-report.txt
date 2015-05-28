@@ -1,0 +1,40 @@
+-- IX Manager --
+Page Formats:
+- Leafs:
+    Each leave contains 3 necessary fields.  It contains the amount of freespace it has, an enum that describes the type of node, and an int that points
+    to its next sibling.  Each record that is stored in this file are in the [key, # of rids, RID(s)] pattern.
+- Nodes:
+    Each node contains the same 3 necessary fields.  The difference is how each record is stored.  Each record is described as a [key, page number] (director) with the
+    exception that there is 1 extra page number that preceeds all directors.
+    
+Insert:
+    First we traverse the B+ tree in search of the leaf node which contains the key.  As we traverse the tree, if we come across a node which is defined as full (if
+    worse case scenario size item is attempted to be inserted) we do a split child.  This split child function will search for the first key that crosses the split 
+    threshold (PAGE_SIZE / 2).  Then we split this page right where that key started.  The split then creates a new page, copies everything from the split position
+    until the freespace offset into that right node.  From here we remove the first key and stick that data into it's correct spot in the parent node. Then we link
+    the left child with the right child.
+    
+    If we discover that the leaf node is "full", we do a split as well that works the same way except for the technique of getting the start of the node that crosses
+    the threshold, instead we select the node that lays nearest the middle of the page.  Then we copy that data over, as well as the first key and store that in the parent.
+    
+    From there we search for the key, when we find the key we either add 1 more RID or create a whole new key depending if the key already exists.
+
+Delete:
+We implemented the simple technique which traverses the B+ tree in search for the leaf node that contains the key.  If the key is found, first check if it has
+greater than 1 RIDs.  If it does, we simply just remove one of these RIDs.  If it has more than 1, then we remove the key, rid indicator, and the single RID.
+This implementation will leave blank leafs.
+
+Print:
+This function uses a depth first search which collects all keys and values based whether or not it is currently in a leaf or non-leaf node.  We currently have this
+function store the results of this function in a textfile called tree.txt to reduce the mass printing in Eclipse and other resources.
+
+Scan:
+This function will test if the lowKey is NULL.  If the low key is null, the function will traverse the left mode leaf. Otherwise, the function will traverse the tree
+until it reaches the node with the given low key.  The leafnode is stored in the iterator, along with the low and high key, the inclusiveness, and some other meta data.
+
+-- IX Scan Iterator
+GetNextEntry:
+This function will iterate over the current page until it determines if has found a key that matches the lowkeys and their inclusiveness. This will then trigger a flag,
+letting the function know it has began iterating over all the values.  When it finds a value that it can use, it stores all the RIDs associated with this value.  As 
+getNextKey is called repeatedly, it will check which indexes have been returned, and return the next one. All of that information is stored in a vector along with an
+index which is stored in memory.  Once it finds a key that is not contained within the inclusivity, it will reach an else if statement that will return IX_EOF.
