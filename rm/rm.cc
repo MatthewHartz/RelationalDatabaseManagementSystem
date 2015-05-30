@@ -802,3 +802,25 @@ RC RM_ScanIterator::close() {
     delete handle;
     return 0;
 }
+
+
+RC RelationManager::createIndex(const string &tableName, const string &attributeName)
+{
+    return -1;
+}
+
+RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
+{
+    return -1;
+}
+
+RC RelationManager::indexScan(const string &tableName,
+                      const string &attributeName,
+                      const void *lowKey,
+                      const void *highKey,
+                      bool lowKeyInclusive,
+                      bool highKeyInclusive,
+                      RM_IndexScanIterator &rm_IndexScanIterator)
+{
+    return -1;
+}
