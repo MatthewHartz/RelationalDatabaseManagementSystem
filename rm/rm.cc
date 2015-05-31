@@ -45,6 +45,7 @@ RC RelationManager::createCatalog()
     addAttributeToDesc("table-id", TypeInt, (AttrLength)4, tablesDesc);
     addAttributeToDesc("table-name", TypeVarChar, (AttrLength)50, tablesDesc);
     addAttributeToDesc("file-name", TypeVarChar, (AttrLength)50, tablesDesc);
+    addAttributeToDesc("authorization-type", TypeInt, (AttrLength)4, tablesDesc);
     addAttributeToDesc("table-type", TypeInt, (AttrLength)4, tablesDesc);
 
     setTablesDesc(tablesDesc);
@@ -111,7 +112,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     }
 
     // Add table desc to tables
-    prepareTablesRecord(maxTableId + 1, tableName, tableName, 0, buffer);
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeUser, TypeTable, buffer);
     rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
     // Close tables file
@@ -141,6 +142,7 @@ RC RelationManager::deleteTable(const string &tableName)
     int tableId;
     string fileName;
     int tableType;
+    int authType;
     RID rid;
     void* buffer = malloc(PAGE_SIZE);
 
@@ -150,6 +152,7 @@ RC RelationManager::deleteTable(const string &tableName)
     vector<string> attributes;
     attributes.push_back("table-id");
     attributes.push_back("file-name");
+    attributes.push_back("authorization-type");
     attributes.push_back("table-type");
 
     int varLength = tableName.length();
@@ -180,6 +183,10 @@ RC RelationManager::deleteTable(const string &tableName)
             name[nameLength] = '\0';
             fileName = std::string(name);
 
+            // initialize authorization type
+            memcpy(&authType, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
+
             // initialize table type
             memcpy(&tableType, (char*)buffer + offset, sizeof(int));
             offset += sizeof(int);
@@ -189,7 +196,7 @@ RC RelationManager::deleteTable(const string &tableName)
     rmsi.close();
 
     // Cannot run deleteTable on system tables
-    if (tableType != 0) {
+    if (tableType != TypeUser) {
         return -1;
     }
 
@@ -372,14 +379,14 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
     string fileName;
-    int tableType;
+    int authType;
 
-    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+    if (RelationManager::getTableFileNameAndAuthType(tableName, fileName, authType) == -1) {
         return -1;
     }
 
     // User cannot insert into System tables
-    if (tableType == 1) {
+    if (authType == TypeSystem) {
         return -1;
     }
 
@@ -405,14 +412,14 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
     string fileName;
-    int tableType;
+    int authType;
 
-    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+    if (RelationManager::getTableFileNameAndAuthType(tableName, fileName, authType) == -1) {
         return -1;
     }
 
     // User cannot insert into System tables
-    if (tableType != 0) {
+    if (authType != TypeUser) {
         return -1;
     }
 
@@ -437,14 +444,14 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
     string fileName;
-    int tableType;
+    int authType;
 
-    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+    if (RelationManager::getTableFileNameAndAuthType(tableName, fileName, authType) == -1) {
         return -1;
     }
 
     // User cannot insert into System tables
-    if (tableType != 0) {
+    if (authType != TypeUser) {
         return -1;
     }
 
@@ -468,8 +475,8 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
     string fileName;
-    int tableType;
-    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+    int authType;
+    if (RelationManager::getTableFileNameAndAuthType(tableName, fileName, authType) == -1) {
         return -1;
     }
 
@@ -500,8 +507,8 @@ RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
 {
     string fileName;
-    int tableType;
-    if (RelationManager::getTableFileNameAndTableType(tableName, fileName, tableType) == -1) {
+    int authType;
+    if (RelationManager::getTableFileNameAndAuthType(tableName, fileName, authType) == -1) {
         return -1;
     }
 
@@ -636,7 +643,7 @@ RC RelationManager::createSystemTable(const string &tableName, const vector<Attr
         }
 
         // Add table desc to tables
-        prepareTablesRecord(maxTableId + 1, tableName, tableName, 1, buffer);
+        prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeSystem, TypeTable, buffer);
         rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
         // Close tables file
@@ -680,13 +687,13 @@ RC RelationManager::dropAttribute(const string &tableName, const string &attribu
  * @fileName The file name that is returned by the function
  * @return a RC
  */
-RC RelationManager::getTableFileNameAndTableType(const string &tableName, string &fileName, int &tableType) {
+RC RelationManager::getTableFileNameAndAuthType(const string &tableName, string &fileName, int &authType) {
     RID tempRid;
     RM_ScanIterator rmsi;
 
     vector<string> names;
     names.push_back("file-name");
-    names.push_back("table-type");
+    names.push_back("authorization-type");
 
     // Initialize the condition attribute value to be compared to
     int varLength = tableName.length();
@@ -716,10 +723,10 @@ RC RelationManager::getTableFileNameAndTableType(const string &tableName, string
         name[nameLength] = '\0';
         fileName = std::string(name);
 
-        // Get tableType
+        // Get Authorization Type
         int type;
         memcpy(&type, (char*)nextTupleData + offset, sizeof(int));
-        tableType = type;
+        authType = type;
     } else {
         rmsi.close();
         free(compValue);
@@ -740,7 +747,7 @@ void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<At
     descriptor.push_back(attr);
 }
 
-void prepareTablesRecord(const int id, const string &table, const string &file, const int tableType, void *buffer) {
+void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, TableType tableType, void *buffer) {
     int offset = 0;
     int length = 0;
     int numFields = 3;
@@ -769,7 +776,11 @@ void prepareTablesRecord(const int id, const string &table, const string &file, 
     memcpy((char *)buffer + offset, file.c_str(), length);
     offset += length;
 
-    // store ID
+    // store authorization type
+    memcpy((char *)buffer + offset, &authType, sizeof(int));
+    offset += sizeof(int);
+
+    // store table type
     memcpy((char *)buffer + offset, &tableType, sizeof(int));
     offset += sizeof(int);
 }
@@ -820,6 +831,38 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
         return -1;
     }
     /* TODO: need to reflect it's existence in the catalogs */
+    // Initialize template variables
+    int maxTableId = 0;
+    RID rid;
+    void* buffer = malloc(120);
+    vector<string> attributes;
+    attributes.push_back("table-id");
+
+    // search for max table id
+    RM_ScanIterator rmsi;
+    RC rc = RelationManager::scan("Tables", "table-id", NO_OP, NULL, attributes, rmsi);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                int tableIdTemp;
+                memcpy(&tableIdTemp, (char*)buffer + 1, sizeof(int));
+
+                if (tableIdTemp > maxTableId) maxTableId = tableIdTemp;
+            }
+        }
+        rmsi.close();
+    }
+
+    // Open the "tables" file
+    FileHandle tablesHandle;
+    if (rbfm->openFile("Tables", tablesHandle) == -1) {
+        return -1;
+    }
+
+    // Add table desc to tables
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeUser, TypeIndex, buffer);
+    rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
     // if all went well return 0 
     return 0;

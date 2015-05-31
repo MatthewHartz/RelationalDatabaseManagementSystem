@@ -13,9 +13,12 @@ using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
 
+typedef enum { TypeTable = 1, TypeIndex = 2} TableType;
+typedef enum { TypeSystem = 1, TypeUser = 2} AuthorizationType;
+
 // function declarations
 void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<Attribute> &descriptor);
-void prepareTablesRecord(const int id, const string &table, const string &file, int tableType, void *buffer);
+void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, TableType tableType, void *buffer);
 void prepareColumnsRecord(const int id, const string &name, const AttrType type, const int length, const int position, void *buffer);
 
 // RM_ScanIterator is an iteratr to go through tuples
@@ -127,7 +130,7 @@ public:
     vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
     void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
     void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
-    RC getTableFileNameAndTableType(const string &tableName, string &fileName, int &tableType);
+    RC getTableFileNameAndAuthType(const string &tableName, string &fileName, int &authType);
 
     // Extra credit work (10 points)
 public:
