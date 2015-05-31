@@ -7,6 +7,7 @@
 #include <cstdlib>
 
 #include "../rbf/rbfm.h"
+#include "../ix/ix.h"
 
 using namespace std;
 
@@ -51,12 +52,19 @@ private:
 
 class RM_IndexScanIterator {
  public:
-  RM_IndexScanIterator() {};    // Constructor
-  ~RM_IndexScanIterator() {};   // Destructor
+  RM_IndexScanIterator() { ix_ScanIterator = new IX_ScanIterator(); };    // Constructor
+  ~RM_IndexScanIterator() { delete ix_ScanIterator; };   // Destructor
 
   // "key" follows the same format as in IndexManager::insertEntry()
-  RC getNextEntry(RID &rid, void *key) {return RM_EOF;};    // Get next matching entry
-  RC close() {return -1;};                      // Terminate index scan
+  RC getNextEntry(RID &rid, void *key);    // Get next matching entry
+  RC close();                      // Terminate index scan
+
+  /// Getters and Setters
+  IX_ScanIterator* getIXScanner() { return ix_ScanIterator; };
+
+ private:
+  IX_ScanIterator *ix_ScanIterator;
+
 };
 
 
@@ -133,6 +141,7 @@ protected:
 private:
     static RelationManager *_rm;
     RecordBasedFileManager *rbfm;
+    IndexManager *ix; 
     vector<Attribute> tablesDescriptor;
     vector<Attribute> columnsDescriptor;
 

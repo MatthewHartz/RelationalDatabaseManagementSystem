@@ -14,11 +14,15 @@ RelationManager* RelationManager::instance()
 RelationManager::RelationManager()
 {
     rbfm = RecordBasedFileManager::instance();
+    ix = IndexManager::instance();
     RelationManager::createCatalog();
 }
 
 RelationManager::~RelationManager()
 {
+    if (_rm != NULL) {
+        delete _rm;
+    }
 }
 
 RC RelationManager::createCatalog()
@@ -47,10 +51,14 @@ RC RelationManager::createCatalog()
     setColumnsDesc(columnsDesc);
 
     // If files already exist, return and don't override the current ones
-    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) return -1;
+    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) {
+        return -1;
+    }
 
     // Creates system tables, if error occurs in either createTable call, returns -1
-    if (createSystemTable("Tables", tablesDesc) == -1 || createSystemTable("Columns", columnsDesc) == -1) return -1;
+    if (createSystemTable("Tables", tablesDesc) == -1 || createSystemTable("Columns", columnsDesc) == -1) {
+        return -1;
+    }
 
     return 0;
 }
@@ -806,12 +814,26 @@ RC RM_ScanIterator::close() {
 
 RC RelationManager::createIndex(const string &tableName, const string &attributeName)
 {
-    return -1;
+    // create the index file
+    string ixFileName(tableName + "_" + attributeName); 
+    if(ix->createFile(ixFileName) == -1) {
+        return -1;
+    }
+    /* TODO: need to reflect it's existence in the catalogs */
+
+    // if all went well return 0 
+    return 0;
 }
 
 RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
 {
-    return -1;
+    string ixFileName(tableName + "_" + attributeName);
+    if (ix->destroyFile(ixFileName) == -1) {
+        return -1;
+    }
+    /* TODO: must reflect its non-existence in the catalog */
+
+    return 0;
 }
 
 RC RelationManager::indexScan(const string &tableName,
@@ -822,5 +844,46 @@ RC RelationManager::indexScan(const string &tableName,
                       bool highKeyInclusive,
                       RM_IndexScanIterator &rm_IndexScanIterator)
 {
-    return -1;
+    // we allocate a new fileHandle and ixScanner and we will have the 
+    // destructors free the memory
+    IXFileHandle *ixFileHandle = new IXFileHandle();
+    IX_ScanIterator *ix_ScanIterator = rm_IndexScanIterator.getIXScanner();
+    string ixFileName(tableName + "_" + attributeName);
+    if (ix->openFile(ixFileName, *ixFileHandle) == -1) {
+        return -1;
+    }
+    
+    // extract all attributes from the table and match it with the correct one
+    vector<Attribute> attrs;
+    Attribute attribute;
+    if (getAttributes(tableName, attrs) == -1) {
+        return -1;
+    }
+
+    for (Attribute attr : attrs) {
+        if (attr.name == attributeName) {
+            attribute = attr;
+            break;
+        }
+    }
+
+    // now we can create a new ix_scaniterator
+    if (ix->scan(*ixFileHandle, attribute, lowKey, highKey, lowKeyInclusive, highKeyInclusive, *ix_ScanIterator)) {
+        return -1;
+    }
+    return 0;
+}
+
+
+RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key) { 
+    // wrap the getNextEntry from an ix_scaniterator
+    if (ix_ScanIterator->getNextEntry(rid, key) == -1) {
+        return -1;
+    }
+    return 0;
+}
+
+RC RM_IndexScanIterator::close() {
+    // let the destructor handle freeign memory
+    return 0;
 }

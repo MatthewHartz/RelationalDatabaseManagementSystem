@@ -21,7 +21,7 @@
 
 // DATABASE_FOLDER is given by makefile.inc file.
 // If your compiler complains about DATABASE_FOLDER, explicitly define DATABASE_FOLDER here
-// #define DATABASE_FOLDER "~/Users/yourpath..."
+//#define DATABASE_FOLDER "~/Users/yourpath..."
 
 CLI * CLI::_cli = 0;
 

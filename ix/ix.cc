@@ -18,6 +18,7 @@ IndexManager::IndexManager()
 
 IndexManager::~IndexManager()
 {
+    delete _index_manager;
 }
 
 RC IndexManager::createFile(const string &fileName)
