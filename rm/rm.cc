@@ -29,10 +29,12 @@ RC RelationManager::createCatalog()
 {
     const string tablesName = "Tables";
     const string columnsName = "Columns";
+    const string indexesName = "Indexes";
 
     //Initialize descriptors
     vector<Attribute> columnsDesc;
     vector<Attribute> tablesDesc;
+    vector<Attribute> indexDesc;
 
     //Create record descriptor for columns
     addAttributeToDesc("table-id", TypeInt, (AttrLength)4, columnsDesc);
@@ -48,11 +50,17 @@ RC RelationManager::createCatalog()
     addAttributeToDesc("authorization-type", TypeInt, (AttrLength)4, tablesDesc);
     addAttributeToDesc("table-type", TypeInt, (AttrLength)4, tablesDesc);
 
+    // Create record descriptor for indexes
+    addAttributeToDesc("table-id", TypeInt, (AttrLength)4, indexDesc);
+    addAttributeToDesc("column-name", TypeVarChar, (AttrLength)50, indexDesc);
+    addAttributeToDesc("file-name", TypeVarChar, (AttrLength)50, indexDesc);
+
     setTablesDesc(tablesDesc);
     setColumnsDesc(columnsDesc);
+    setIndexDesc(indexDesc);
 
     // If files already exist, return and don't override the current ones
-    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1) {
+    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1 || rbfm->createFile(indexesName) == -1) {
         return -1;
     }
 
@@ -68,9 +76,10 @@ RC RelationManager::deleteCatalog()
 {
     columnsDescriptor.clear();
     tablesDescriptor.clear();
+    indexDescriptor.clear();
 
     // return -1 if error on destroy file
-    if (rbfm->destroyFile("Tables") == -1 || rbfm->destroyFile("Columns") == -1) return -1;
+    if (rbfm->destroyFile("Tables") == -1 || rbfm->destroyFile("Columns") == -1|| rbfm->destroyFile("Indexes") == -1) return -1;
 
     return 0;
 }
@@ -112,7 +121,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     }
 
     // Add table desc to tables
-    prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeUser, TypeTable, buffer);
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeUser, buffer);
     rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
     // Close tables file
@@ -643,7 +652,7 @@ RC RelationManager::createSystemTable(const string &tableName, const vector<Attr
         }
 
         // Add table desc to tables
-        prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeSystem, TypeTable, buffer);
+        prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeSystem, buffer);
         rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
         // Close tables file
@@ -747,7 +756,7 @@ void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<At
     descriptor.push_back(attr);
 }
 
-void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, TableType tableType, void *buffer) {
+void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, void *buffer) {
     int offset = 0;
     int length = 0;
     int numFields = 3;
@@ -778,10 +787,6 @@ void prepareTablesRecord(const int id, const string &table, const string &file, 
 
     // store authorization type
     memcpy((char *)buffer + offset, &authType, sizeof(int));
-    offset += sizeof(int);
-
-    // store table type
-    memcpy((char *)buffer + offset, &tableType, sizeof(int));
     offset += sizeof(int);
 }
 
@@ -816,6 +821,33 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
     offset += sizeof(int);
 }
 
+void prepareIndexesRecord(const int tableId, const string &column, const string &fileName, void *buffer) {
+    unsigned int offset = 0;
+    int l = 0;
+    int numFields = 5;
+
+    char nullSection = 0;
+
+    // Store null data field, so ReadPage works correctly
+    memcpy((char *)buffer + offset, &nullSection, 1);
+    offset += 1;
+
+    // Copy over data
+    memcpy((char *)buffer + offset, &tableId, sizeof(int));
+    offset += sizeof(int);
+
+    l = column.length();
+    memcpy((char *)buffer + offset, &l, sizeof(int));
+    offset += sizeof(int);
+    memcpy((char *)buffer + offset, column.c_str(), l);
+
+    l = fileName.length();
+    memcpy((char *)buffer + offset, &l, sizeof(int));
+    offset += sizeof(int);
+    memcpy((char *)buffer + offset, fileName.c_str(), l);
+}
+
+
 RC RM_ScanIterator::close() {
     scanRBFM->closeFile(*handle);
     delete handle;
@@ -825,46 +857,89 @@ RC RM_ScanIterator::close() {
 
 RC RelationManager::createIndex(const string &tableName, const string &attributeName)
 {
-    // create the index file
-    string ixFileName(tableName + "_" + attributeName); 
-    if(ix->createFile(ixFileName) == -1) {
-        return -1;
-    }
-    /* TODO: need to reflect it's existence in the catalogs */
-    // Initialize template variables
-    int maxTableId = 0;
+    int tableId;
+    // Check to see that tableName exists in the catalog and get the table id
     RID rid;
-    void* buffer = malloc(120);
+    void* buffer = malloc(PAGE_SIZE);
     vector<string> attributes;
     attributes.push_back("table-id");
 
-    // search for max table id
+    // initialize comp value == tableName
     RM_ScanIterator rmsi;
-    RC rc = RelationManager::scan("Tables", "table-id", NO_OP, NULL, attributes, rmsi);
+    int varLength = tableName.length();
+    void* compValue = malloc(sizeof(int) + varLength);
+    memcpy((char *) compValue, &varLength, sizeof(int));
+    memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
+
+    // scan over the Tables table
+    RC rc = RelationManager::scan("Tables", "table-name", EQ_OP, compValue, attributes, rmsi);
 
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
             if (!rbfm->isFieldNull(buffer, 0)) {
-                int tableIdTemp;
-                memcpy(&tableIdTemp, (char*)buffer + 1, sizeof(int));
-
-                if (tableIdTemp > maxTableId) maxTableId = tableIdTemp;
+                memcpy(&tableId, (char*)buffer + 1, sizeof(int));
+            } else {
+                free(buffer);
+                free(compValue);
+                return -1;
             }
         }
         rmsi.close();
+        free(compValue);
+    } else {
+        free(buffer);
+        free(compValue);
+        return -1;
     }
 
-    // Open the "tables" file
-    FileHandle tablesHandle;
-    if (rbfm->openFile("Tables", tablesHandle) == -1) {
+    // initialize comp value == attributeName
+    varLength = attributeName.length();
+    compValue = malloc(sizeof(int) + varLength);
+    memcpy((char *) compValue, &varLength, sizeof(int));
+    memcpy((char *) compValue + sizeof(int), attributeName.c_str(), varLength);
+
+    // Check to see if the attribute exists otherwise ERROR
+    rc = RelationManager::scan("Tables", "column-name", EQ_OP, compValue, attributes, rmsi);
+
+    // just making sure something returns that isn't -1 or NULL
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                //memcpy(&tableId, (char*)buffer + 1, sizeof(int));
+            } else {
+                free(buffer);
+                free(compValue);
+                return -1;
+            }
+        }
+        rmsi.close();
+    } else {
+        free(buffer);
+        free(compValue);
+        return -1;
+    }
+
+    // create the index file
+    string ixFileName(tableName + "_" + attributeName + "_index");
+    if(ix->createFile(ixFileName) == -1) {
+        return -1;
+    }
+
+    // Open the "indexes" file
+    FileHandle indexesHandle;
+    if (rbfm->openFile("Indexes", indexesHandle) == -1) {
         return -1;
     }
 
     // Add table desc to tables
-    prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeUser, TypeIndex, buffer);
-    rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
+    prepareIndexesRecord(tableId, attributeName, ixFileName, buffer);
+    rbfm->insertRecord(indexesHandle, this->getTablesDesc(), buffer, rid);
 
-    // if all went well return 0 
+    // Close tables file
+    rbfm->closeFile(indexesHandle);
+    free(buffer);
+
+    // if all went well return 0
     return 0;
 }
 

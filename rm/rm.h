@@ -13,13 +13,13 @@ using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
 
-typedef enum { TypeTable = 1, TypeIndex = 2} TableType;
 typedef enum { TypeSystem = 1, TypeUser = 2} AuthorizationType;
 
 // function declarations
 void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<Attribute> &descriptor);
-void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, TableType tableType, void *buffer);
+void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, void *buffer);
 void prepareColumnsRecord(const int id, const string &name, const AttrType type, const int length, const int position, void *buffer);
+void prepareIndexesRecord(const int tableId, const int columnId, const string &fileName, void *buffer);
 
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
@@ -130,6 +130,7 @@ public:
     vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
     void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
     void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
+    void setIndexDesc(vector<Attribute> desc) { this->indexDescriptor = desc; }
     RC getTableFileNameAndAuthType(const string &tableName, string &fileName, int &authType);
 
     // Extra credit work (10 points)
@@ -147,7 +148,7 @@ private:
     IndexManager *ix; 
     vector<Attribute> tablesDescriptor;
     vector<Attribute> columnsDescriptor;
-
+    vector<Attribute> indexDescriptor;
 };
 
 #endif
