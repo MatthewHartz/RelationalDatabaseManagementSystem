@@ -673,6 +673,17 @@ int createIndexforRightC() {
 	return rm->createIndex("right", "C");
 }
 
+int deleteAndCreateCatalog() {
+  // Try to delete the System Catalog.
+  // If this is the first time, it will generate an error. It's OK and we will ignore that.
+  RC rc = rm->deleteCatalog();
+
+  rc = rm->createCatalog();
+  assert (rc == success && "Creating the Catalog should not fail.");
+  
+  return rc;
+}
+
 #endif
 
 

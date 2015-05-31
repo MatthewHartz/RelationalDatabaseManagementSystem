@@ -38,6 +38,13 @@ int testCase_1() {
 
 int main() {
 
+	// Initialize the system catalog
+	if (deleteAndCreateCatalog() != success) {
+		cout << "***** deleteAndCreateCatalog() failed." << endl;
+		cout << "***** [FAIL] QE Test Case 1 failed. *****" << endl;
+		return fail;
+	}
+	
 	// Create the left table
 	if (createLeftTable() != success) {
 		cout << "***** createLeftTable() failed." << endl;
