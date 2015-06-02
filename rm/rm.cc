@@ -415,6 +415,34 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
     // Close the file
     if (rbfm->closeFile(handle) == -1) return -1;
 
+    // variables used for index insertion
+    string indexFile;
+    RID indexRid;
+    vector<Attribute> attributes;
+    IXFileHandle indexHandle;
+
+    // get attributes for a given table
+    if (getAttributes(tableName, attributes) == -1) {
+        return -1;
+    }
+
+    // iterate over each attribute checking if file exist, and if so, inserting into given index file
+    for (int i = 0; i < attributes.size(); i++) {
+        if (getIndexFileName(tableName, attributes[i].name, indexFile, indexRid) != -1) {
+            if (ix->openFile(indexFile, indexHandle) == -1) {
+                return -1;
+            }
+
+            if (ix->insertEntry(indexHandle, attributes[i], data, rid) == -1) {
+                return -1;
+            }
+
+            if (ix->closeFile(indexHandle) == -1) {
+                return -1;
+            }
+        }
+    }
+
     return 0;
 }
 
@@ -438,15 +466,50 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
         return -1;
     }
 
-    // Get the descriptor from the tableName
+    // Get attributes and key, which will be utilized for index management
     vector<Attribute> descriptor;
-    if (getAttributes(tableName, descriptor) == -1) return -1;
+    void *key;
 
-    // Delete data
+    if (getAttributes(tableName, descriptor) == -1) {
+        return -1;
+    }
+
+    if (readTuple(tableName, rid, key) == -1) {
+        return -1;
+    }
+
+    // Delete the record
     if (rbfm->deleteRecord(handle, descriptor, rid) == -1) return -1;
 
+    // Close the file
     if (rbfm->closeFile(handle) == -1) return -1;
 
+    // variables used for index insertion
+    string indexFile;
+    RID indexRid;
+    IXFileHandle indexHandle;
+
+    // iterate over each attribute checking if file exist, and if so, inserting into given index file
+    key = malloc(PAGE_SIZE);
+    for (int i = 0; i < descriptor.size(); i++) {
+        if (getIndexFileName(tableName, descriptor[i].name, indexFile, indexRid) != -1) {
+            if (ix->openFile(indexFile, indexHandle) == -1) {
+                return -1;
+            }
+
+            if (ix->deleteEntry(indexHandle, descriptor[i], key, rid) == -1) {
+                free(key);
+                return -1;
+            }
+
+            if (ix->closeFile(indexHandle) == -1) {
+                free(key);
+                return -1;
+            }
+        }
+    }
+
+    free(key);
     return 0;
 }
 
@@ -1070,7 +1133,7 @@ RC RelationManager::getIndexFileName(const string &tableName, const string &attr
     bool foundIndex = false;
 
     // Scan over index for where tableid == tableId
-    RC rc = RelationManager::scan("Indexes", "table-id", EQ_OP, compValue, attributes, rmsi);
+    rc = RelationManager::scan("Indexes", "table-id", EQ_OP, compValue, attributes, rmsi);
 
     if (rc != -1) {
         while (rmsi.getNextTuple(tempRid, buffer) != RM_EOF){
