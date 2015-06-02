@@ -945,11 +945,128 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 
 RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
 {
-    string ixFileName(tableName + "_" + attributeName);
-    if (ix->destroyFile(ixFileName) == -1) {
+    int tableId;
+    // Check to see that tableName exists in the catalog and get the table id
+    RID rid;
+    void* buffer = malloc(PAGE_SIZE);
+    vector<string> attributes;
+    attributes.push_back("table-id");
+
+    // initialize comp value == tableName
+    RM_ScanIterator rmsi;
+    int varLength = tableName.length();
+    void* compValue = malloc(sizeof(int) + varLength);
+    memcpy((char *) compValue, &varLength, sizeof(int));
+    memcpy((char *) compValue + sizeof(int), tableName.c_str(), varLength);
+
+    // scan over the Tables table
+    RC rc = RelationManager::scan("Tables", "table-name", EQ_OP, compValue, attributes, rmsi);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                memcpy(&tableId, (char*)buffer + 1, sizeof(int));
+            } else {
+                free(buffer);
+                free(compValue);
+                return -1;
+            }
+        }
+        rmsi.close();
+        free(compValue);
+    }
+    // table name does not exist
+    else {
+        free(buffer);
+        free(compValue);
         return -1;
     }
-    /* TODO: must reflect its non-existence in the catalog */
+
+    // initialize comp value == tableId
+    compValue = malloc(sizeof(int));
+    memcpy((char*)compValue, &tableId, sizeof(int));
+    attributes.clear();
+    attributes.push_back("column-name");
+    attributes.push_back("file-name");
+
+    char* f; // char pointer for fileName
+    string file;
+    int fileLen;
+    char* a; // char pointer for attribute
+    int attrLen;
+    int offset = 1; // compensate for nullindicator
+    bool foundIndex = false;
+
+    // Scan over index for where tableid == tableId
+    RC rc = RelationManager::scan("Indexes", "table-id", EQ_OP, compValue, attributes, rmsi);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            // make sure both fields are not null
+            if (!rbfm->isFieldNull(buffer, 0) && !rbfm->isFieldNull(buffer, 1)) {
+                // collect column and test if that is the correct column
+                memcpy(&attrLen, (char*)buffer + offset, sizeof(int));
+                offset += sizeof(int);
+                a = new char[attrLen + 1];
+                memcpy(a, (char*)buffer + offset, attrLen);
+                a[attrLen] = '\0';
+                offset += attrLen;
+
+                string attr(a);
+
+                // compare attr to attributeName
+                if (attr == attributeName) {
+                    // collect file name
+                    memcpy(&fileLen, (char*)buffer + offset, sizeof(int));
+                    offset += sizeof(int);
+                    f = new char[fileLen + 1];
+                    memcpy(f, (char*)buffer + offset, fileLen);
+                    f[fileLen] = '\0';
+                    offset += fileLen;
+
+                    file = f;
+
+                    // open handle for deletion
+                    FileHandle handle;
+                    if (rbfm->openFile("Indexes", handle) == -1) {
+                        return -1;
+                    }
+
+                    // delete tuple
+                    if (rbfm->deleteRecord(handle, getIndexesDesc(), rid) == -1) {
+                        return -1;
+                    }
+
+                    foundIndex = true;
+                    break;
+                } else {
+                    offset = 0;
+                }
+            } else {
+                free(buffer);
+                free(compValue);
+                return -1;
+            }
+        }
+        rmsi.close();
+        free(compValue);
+    }
+    // index for table id does not exist
+    else {
+        free(buffer);
+        free(compValue);
+        return -1;
+    }
+
+    // If index was not found, return -1
+    if (!foundIndex) {
+        return -1;
+    }
+
+    // destroy the file
+    if (ix->destroyFile(file) == -1) {
+        return -1;
+    }
 
     return 0;
 }

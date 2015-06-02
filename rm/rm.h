@@ -128,6 +128,7 @@ public:
 
     vector<Attribute> getTablesDesc() { return this->tablesDescriptor; }
     vector<Attribute> getColumnsDesc() { return this->columnsDescriptor; }
+    vector<Attribute> getIndexesDesc() { return this->indexDescriptor; }
     void setTablesDesc(vector<Attribute> desc) { this->tablesDescriptor = desc; }
     void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
     void setIndexDesc(vector<Attribute> desc) { this->indexDescriptor = desc; }
