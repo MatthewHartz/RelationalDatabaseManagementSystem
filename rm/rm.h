@@ -133,6 +133,7 @@ public:
     void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
     void setIndexDesc(vector<Attribute> desc) { this->indexDescriptor = desc; }
     RC getTableFileNameAndAuthType(const string &tableName, string &fileName, int &authType);
+    RC getIndexFileName(const string &tableName, const string &attributeName, string &indexName, RID &rid);
 
     // Extra credit work (10 points)
 public:

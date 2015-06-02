@@ -945,9 +945,81 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 
 RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
 {
+    string indexFile;
+    RID rid;
+
+    // get the file name and rid (if exists) of the record in indexes file for the given index
+    if (getIndexFileName(tableName, attributeName, indexFile, rid) == -1) {
+        return -1;
+    }
+
+    // open handle for deletion
+    FileHandle handle;
+    if (rbfm->openFile("Indexes", handle) == -1) {
+        return -1;
+    }
+
+    // delete tuple
+    if (rbfm->deleteRecord(handle, getIndexesDesc(), rid) == -1) {
+        return -1;
+    }
+
+    // destroy the file
+    if (ix->destroyFile(indexFile) == -1) {
+        return -1;
+    }
+
+    return 0;
+}
+
+RC RelationManager::indexScan(const string &tableName,
+                      const string &attributeName,
+                      const void *lowKey,
+                      const void *highKey,
+                      bool lowKeyInclusive,
+                      bool highKeyInclusive,
+                      RM_IndexScanIterator &rm_IndexScanIterator)
+{
+    // we allocate a new fileHandle and ixScanner and we will have the
+    // destructors free the memory
+    IXFileHandle *ixFileHandle = new IXFileHandle();
+    IX_ScanIterator *ix_ScanIterator = rm_IndexScanIterator.getIXScanner();
+    string ixFileName;
+    RID rid;
+
+    if (getIndexFileName(tableName, attributeName, ixFileName, rid) == -1) {
+        return -1;
+    }
+
+    if (ix->openFile(ixFileName, *ixFileHandle) == -1) {
+        return -1;
+    }
+
+    // extract all attributes from the table and match it with the correct one
+    vector<Attribute> attrs;
+    Attribute attribute;
+    if (getAttributes(tableName, attrs) == -1) {
+        return -1;
+    }
+
+    for (Attribute attr : attrs) {
+        if (attr.name == attributeName) {
+            attribute = attr;
+            break;
+        }
+    }
+
+    // now we can create a new ix_scaniterator
+    if (ix->scan(*ixFileHandle, attribute, lowKey, highKey, lowKeyInclusive, highKeyInclusive, *ix_ScanIterator)) {
+        return -1;
+    }
+    return 0;
+}
+
+RC RelationManager::getIndexFileName(const string &tableName, const string &attributeName, string &indexName, RID &rid) {
     int tableId;
     // Check to see that tableName exists in the catalog and get the table id
-    RID rid;
+    RID tempRid;
     void* buffer = malloc(PAGE_SIZE);
     vector<string> attributes;
     attributes.push_back("table-id");
@@ -963,7 +1035,7 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
     RC rc = RelationManager::scan("Tables", "table-name", EQ_OP, compValue, attributes, rmsi);
 
     if (rc != -1) {
-        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+        while (rmsi.getNextTuple(tempRid, buffer) != RM_EOF){
             if (!rbfm->isFieldNull(buffer, 0)) {
                 memcpy(&tableId, (char*)buffer + 1, sizeof(int));
             } else {
@@ -1001,7 +1073,7 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
     RC rc = RelationManager::scan("Indexes", "table-id", EQ_OP, compValue, attributes, rmsi);
 
     if (rc != -1) {
-        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+        while (rmsi.getNextTuple(tempRid, buffer) != RM_EOF){
             // make sure both fields are not null
             if (!rbfm->isFieldNull(buffer, 0) && !rbfm->isFieldNull(buffer, 1)) {
                 // collect column and test if that is the correct column
@@ -1026,16 +1098,8 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
 
                     file = f;
 
-                    // open handle for deletion
-                    FileHandle handle;
-                    if (rbfm->openFile("Indexes", handle) == -1) {
-                        return -1;
-                    }
-
-                    // delete tuple
-                    if (rbfm->deleteRecord(handle, getIndexesDesc(), rid) == -1) {
-                        return -1;
-                    }
+                    // set rid == tempRID because we return the RID of this file name discovered
+                    rid = tempRid;
 
                     foundIndex = true;
                     break;
@@ -1062,50 +1126,7 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
     if (!foundIndex) {
         return -1;
     }
-
-    // destroy the file
-    if (ix->destroyFile(file) == -1) {
-        return -1;
-    }
-
-    return 0;
-}
-
-RC RelationManager::indexScan(const string &tableName,
-                      const string &attributeName,
-                      const void *lowKey,
-                      const void *highKey,
-                      bool lowKeyInclusive,
-                      bool highKeyInclusive,
-                      RM_IndexScanIterator &rm_IndexScanIterator)
-{
-    // we allocate a new fileHandle and ixScanner and we will have the 
-    // destructors free the memory
-    IXFileHandle *ixFileHandle = new IXFileHandle();
-    IX_ScanIterator *ix_ScanIterator = rm_IndexScanIterator.getIXScanner();
-    string ixFileName(tableName + "_" + attributeName);
-    if (ix->openFile(ixFileName, *ixFileHandle) == -1) {
-        return -1;
-    }
     
-    // extract all attributes from the table and match it with the correct one
-    vector<Attribute> attrs;
-    Attribute attribute;
-    if (getAttributes(tableName, attrs) == -1) {
-        return -1;
-    }
-
-    for (Attribute attr : attrs) {
-        if (attr.name == attributeName) {
-            attribute = attr;
-            break;
-        }
-    }
-
-    // now we can create a new ix_scaniterator
-    if (ix->scan(*ixFileHandle, attribute, lowKey, highKey, lowKeyInclusive, highKeyInclusive, *ix_ScanIterator)) {
-        return -1;
-    }
     return 0;
 }
 
