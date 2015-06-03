@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <cstdlib>
+#include <unordered_map>
+#include <algorithm>
 
 #include "../rbf/rbfm.h"
 #include "../ix/ix.h"
@@ -13,7 +15,10 @@ using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
 
+// typedefs
 typedef enum { TypeSystem = 1, TypeUser = 2} AuthorizationType;
+typedef pair<string, string> col2FileName;
+typedef unordered_map<int, vector<col2FileName>> table2Col;
 
 // function declarations
 void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<Attribute> &descriptor);
@@ -133,7 +138,7 @@ public:
     void setColumnsDesc(vector<Attribute> desc) { this->columnsDescriptor = desc; }
     void setIndexDesc(vector<Attribute> desc) { this->indexDescriptor = desc; }
     RC getTableFileNameAndAuthType(const string &tableName, string &fileName, int &authType);
-    RC getIndexFileName(const string &tableName, const string &attributeName, string &indexName, RID &rid);
+    RC getIndexFileName(const string &tableName, const string &attributeName, string &indexName, RID &rid, int &tableId);
 
     // Extra credit work (10 points)
 public:
@@ -148,6 +153,7 @@ private:
     static RelationManager *_rm;
     RecordBasedFileManager *rbfm;
     IndexManager *ix; 
+    table2Col indexMap;
     vector<Attribute> tablesDescriptor;
     vector<Attribute> columnsDescriptor;
     vector<Attribute> indexDescriptor;

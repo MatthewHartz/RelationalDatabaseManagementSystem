@@ -427,8 +427,9 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
     }
 
     // iterate over each attribute checking if file exist, and if so, inserting into given index file
+    int tableId;
     for (int i = 0; i < attributes.size(); i++) {
-        if (getIndexFileName(tableName, attributes[i].name, indexFile, indexRid) != -1) {
+        if (getIndexFileName(tableName, attributes[i].name, indexFile, indexRid, tableId) != -1) {
             if (ix->openFile(indexFile, indexHandle) == -1) {
                 return -1;
             }
@@ -490,9 +491,10 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
     IXFileHandle indexHandle;
 
     // iterate over each attribute checking if file exist, and if so, inserting into given index file
+    int tableId;
     key = malloc(PAGE_SIZE);
     for (int i = 0; i < descriptor.size(); i++) {
-        if (getIndexFileName(tableName, descriptor[i].name, indexFile, indexRid) != -1) {
+        if (getIndexFileName(tableName, descriptor[i].name, indexFile, indexRid, tableId) != -1) {
             if (ix->openFile(indexFile, indexHandle) == -1) {
                 return -1;
             }
@@ -988,6 +990,18 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
         return -1;
     }
 
+    // create mapping of each index created and store it for faster lookup
+    auto t_id = indexMap.find(tableId);
+    col2FileName fileMap(attributeName, ixFileName);
+    
+    // check and see if the tableID already exists in the map
+    if (t_id == indexMap.end()) {
+        vector<col2FileName> v { fileMap };
+        indexMap[tableId] = v;
+    } else {
+        t_id->second.push_back(fileMap);
+    }
+
     // Open the "indexes" file
     FileHandle indexesHandle;
     if (rbfm->openFile("Indexes", indexesHandle) == -1) {
@@ -1009,10 +1023,11 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
 {
     string indexFile;
+    int tableId;
     RID rid;
 
     // get the file name and rid (if exists) of the record in indexes file for the given index
-    if (getIndexFileName(tableName, attributeName, indexFile, rid) == -1) {
+    if (getIndexFileName(tableName, attributeName, indexFile, rid, tableId) == -1) {
         return -1;
     }
 
@@ -1030,6 +1045,15 @@ RC RelationManager::destroyIndex(const string &tableName, const string &attribut
     // destroy the file
     if (ix->destroyFile(indexFile) == -1) {
         return -1;
+    }
+       
+    // remove the index from the indexMap
+    auto f = indexMap.find(tableId);
+    col2FileName p(attributeName, indexFile);
+    f->second.erase(remove(f->second.begin(), f->second.end(), p), f->second.end());
+
+    if (f->second.size() == 0) {
+       // possibley delete the vector if empty 
     }
 
     return 0;
@@ -1049,8 +1073,9 @@ RC RelationManager::indexScan(const string &tableName,
     IX_ScanIterator *ix_ScanIterator = rm_IndexScanIterator.getIXScanner();
     string ixFileName;
     RID rid;
+    int tableId;
 
-    if (getIndexFileName(tableName, attributeName, ixFileName, rid) == -1) {
+    if (getIndexFileName(tableName, attributeName, ixFileName, rid, tableId) == -1) {
         return -1;
     }
 
@@ -1079,8 +1104,11 @@ RC RelationManager::indexScan(const string &tableName,
     return 0;
 }
 
-RC RelationManager::getIndexFileName(const string &tableName, const string &attributeName, string &indexName, RID &rid) {
-    int tableId;
+RC RelationManager::getIndexFileName(const string &tableName, 
+                                     const string &attributeName, 
+                                     string &indexName, 
+                                     RID &rid, 
+                                     int &tableId) {
     // Check to see that tableName exists in the catalog and get the table id
     RID tempRid;
     void* buffer = malloc(PAGE_SIZE);
@@ -1117,6 +1145,26 @@ RC RelationManager::getIndexFileName(const string &tableName, const string &attr
         return -1;
     }
 
+    // search the map for the table id
+    auto t_id = indexMap.find(tableId);
+
+    if (t_id == indexMap.end()) {
+        // nothing found
+        return -1;
+    }
+    
+    // search the vector for the correct match
+    for (col2FileName c : t_id->second) {
+        if (c.first == attributeName) {
+            indexName = c.second;
+            rid = tempRid;
+            return 0;
+        }
+    }
+    // if we get here then we didn't find it
+    return -1;
+
+    /*
     // initialize comp value == tableId
     compValue = malloc(sizeof(int));
     memcpy((char*)compValue, &tableId, sizeof(int));
@@ -1188,9 +1236,8 @@ RC RelationManager::getIndexFileName(const string &tableName, const string &attr
     // If index was not found, return -1
     if (!foundIndex) {
         return -1;
-    }
+    }i*/
     
-    return 0;
 }
 
 
