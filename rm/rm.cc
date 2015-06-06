@@ -16,6 +16,72 @@ RelationManager::RelationManager()
     rbfm = RecordBasedFileManager::instance();
     ix = IndexManager::instance();
     RelationManager::createCatalog();
+
+    // Populate the indexmap
+    int tableId = 0;
+    string columnName;
+    string fileName;
+    RID rid;
+    void* buffer = malloc(PAGE_SIZE);
+    vector<string> attributes;
+    attributes.push_back("table-id");
+    attributes.push_back("column-name");
+    attributes.push_back("file-name");
+
+    // Iterate over the whole index file populating the index map
+    RM_ScanIterator rmsi;
+    RC rc = RelationManager::scan("Indexes", "table-id", NO_OP, NULL, attributes, rmsi);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            // make sure none of the attributes are null
+            for (int i = 0; i < attributes.size(); i++) {
+                if (rbfm->isFieldNull(buffer, i)) {
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            int offset = 1;
+
+            // initialize table id
+            memcpy(&tableId, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
+
+            // initialize column name
+            int cLength;
+            memcpy(&cLength, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
+            char* column = new char[cLength + 1];
+            memcpy(column, (char*)buffer + offset, cLength);
+            offset += cLength;
+            column[cLength] = '\0';
+            columnName = std::string(column);
+
+            // initialize file name
+            int fLength;
+            memcpy(&fLength, (char*)buffer + offset, sizeof(int));
+            offset += sizeof(int);
+            char* file = new char[fLength + 1];
+            memcpy(file, (char*)buffer + offset, fLength);
+            offset += fLength;
+            file[fLength] = '\0';
+            fileName = std::string(file);
+
+            // push item into map
+            auto t_id = indexMap.find(tableId);
+            col2FileName fileMap(columnName, fileName);
+
+            // check and see if the tableID already exists in the map
+            if (t_id == indexMap.end()) {
+                vector<col2FileName> v { fileMap };
+                indexMap[tableId] = v;
+            } else {
+                t_id->second.push_back(fileMap);
+            }
+        }
+        rmsi.close();
+    }
+
 }
 
 RelationManager::~RelationManager()
@@ -60,12 +126,15 @@ RC RelationManager::createCatalog()
     setIndexDesc(indexDesc);
 
     // If files already exist, return and don't override the current ones
-    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1 || rbfm->createFile(indexesName) == -1) {
-        return -1;
-    }
+    // THIS SHOULDN'T BE NEEDED, I COMMENTED IT OUT
+//    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1 || rbfm->createFile(indexesName) == -1) {
+//        return -1;
+//    }
 
     // Creates system tables, if error occurs in either createTable call, returns -1
-    if (createSystemTable("Tables", tablesDesc) == -1 || createSystemTable("Columns", columnsDesc) == -1) {
+    if (createSystemTable("Tables", tablesDesc) == -1
+            || createSystemTable("Columns", columnsDesc) == -1
+            || createSystemTable("Indexes", indexDesc) == -1) {
         return -1;
     }
 
@@ -688,58 +757,58 @@ RC RelationManager::scan(const string &tableName,
 
 RC RelationManager::createSystemTable(const string &tableName, const vector<Attribute> &attrs){
     // Create the new table file
-        rbfm->createFile(tableName);
+    rbfm->createFile(tableName);
 
-        // Initialize template variables
-        int maxTableId = 0;
-        RID rid;
-        void* buffer = malloc(120);
-        vector<string> attributes;
-        attributes.push_back("table-id");
+    // Initialize template variables
+    int maxTableId = 0;
+    RID rid;
+    void* buffer = malloc(120);
+    vector<string> attributes;
+    attributes.push_back("table-id");
 
-        // search for max table id
-        RM_ScanIterator rmsi;
-        RC rc = RelationManager::scan("Tables", "table-id", NO_OP, NULL, attributes, rmsi);
+    // search for max table id
+    RM_ScanIterator rmsi;
+    RC rc = RelationManager::scan("Tables", "table-id", NO_OP, NULL, attributes, rmsi);
 
-        if (rc != -1) {
-            while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
-                if (!rbfm->isFieldNull(buffer, 0)) {
-                    memcpy(&maxTableId, (char*)buffer + 1, sizeof(int));
-                }
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                memcpy(&maxTableId, (char*)buffer + 1, sizeof(int));
             }
-            rmsi.close();
         }
+        rmsi.close();
+    }
 
-        // Open the "tables" file
-        FileHandle tablesHandle;
-        if (rbfm->openFile("Tables", tablesHandle) == -1) {
-            return -1;
-        }
+    // Open the "tables" file
+    FileHandle tablesHandle;
+    if (rbfm->openFile("Tables", tablesHandle) == -1) {
+        return -1;
+    }
 
-        // Add table desc to tables
-        prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeSystem, buffer);
-        rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
+    // Add table desc to tables
+    prepareTablesRecord(maxTableId + 1, tableName, tableName, TypeSystem, buffer);
+    rbfm->insertRecord(tablesHandle, this->getTablesDesc(), buffer, rid);
 
-        // Close tables file
-        rbfm->closeFile(tablesHandle);
+    // Close tables file
+    rbfm->closeFile(tablesHandle);
 
-        // Open "columns" file
-        FileHandle columnsHandle;
-        if (rbfm->openFile("Columns", columnsHandle) == -1) {
-            return -1;
-        }
+    // Open "columns" file
+    FileHandle columnsHandle;
+    if (rbfm->openFile("Columns", columnsHandle) == -1) {
+        return -1;
+    }
 
-        // Loop through attrs and iterative insert each row into the columns table
-        for (int i = 0; i < attrs.size(); i++) {
-            prepareColumnsRecord(maxTableId + 1, attrs[i].name, attrs[i].type, attrs[i].length, i + 1, buffer);
-            rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
-        }
+    // Loop through attrs and iterative insert each row into the columns table
+    for (int i = 0; i < attrs.size(); i++) {
+        prepareColumnsRecord(maxTableId + 1, attrs[i].name, attrs[i].type, attrs[i].length, i + 1, buffer);
+        rbfm->insertRecord(columnsHandle, this->getColumnsDesc(), buffer, rid);
+    }
 
-        // CLose the columns file
-        rbfm->closeFile(columnsHandle);
+    // CLose the columns file
+    rbfm->closeFile(columnsHandle);
 
-        free(buffer);
-        return 0;
+    free(buffer);
+    return 0;
 }
 // Extra credit work
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
