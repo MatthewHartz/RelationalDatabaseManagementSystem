@@ -131,9 +131,9 @@ RC RelationManager::createCatalog()
 
     // If files already exist, return and don't override the current ones
     // THIS SHOULDN'T BE NEEDED, I COMMENTED IT OUT
-//    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1 || rbfm->createFile(indexesName) == -1) {
-//        return -1;
-//    }
+    if (rbfm->createFile(tablesName) == -1 || rbfm->createFile(columnsName) == -1 || rbfm->createFile(indexesName) == -1) {
+        return -1;
+    }
 
     // Creates system tables, if error occurs in either createTable call, returns -1
     if (createSystemTable("Tables", tablesDesc) == -1
