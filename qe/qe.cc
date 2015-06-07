@@ -15,13 +15,14 @@ Filter::Filter(Iterator* input, const Condition &condition) {
     for(i = 0; i < attrs.size(); ++i)
     {
         // convert to char *
+        attrs.at(i).name.erase(0, attrs.at(i).name.find(".") + 1);
         returnAttrs.push_back(attrs.at(i).name);
     }
 
         
     attr.erase(0, attr.find(".") + 1);
     if (dynamic_cast<TableScan*>(in)) {
-        static_cast<TableScan*>(in)->setIterator(cond.op, attr, returnAttrs, condition.rhsValue);
+        static_cast<TableScan*>(in)->setIterator(condition.op, attr, returnAttrs, condition.rhsValue);
     } else {
        // static_cast<IndeScan*>(in)->set
 
