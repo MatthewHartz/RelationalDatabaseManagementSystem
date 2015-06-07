@@ -19,12 +19,18 @@ Filter::Filter(Iterator* input, const Condition &condition) {
         returnAttrs.push_back(attrs.at(i).name);
     }
 
-        
     attr.erase(0, attr.find(".") + 1);
     if (dynamic_cast<TableScan*>(in)) {
         static_cast<TableScan*>(in)->setIterator(condition.op, attr, returnAttrs, condition.rhsValue);
     } else {
-       // static_cast<IndeScan*>(in)->set
+        bool lowK = false;
+        bool highK = false;
+        if (!condition.bRhsIsAttr && (condition.op == GE_OP || condition.op == LE_OP)) {
+            lowK = true;
+            static_cast<IndexScan*>(in)->setIterator(condition.rhsValue.data, NULL, true, false);
+        } else if(condition.bRhsIsAttr && (condition.op == GE_OP || condition.op == LE_OP)) {
+            // not sure what to do here
+        }
 
     }
 }
@@ -33,9 +39,18 @@ Project::Project(Iterator* input, const vector<string> &attrNames) {
     in = input;
     attrs = attrNames;
     Value v;
+    v.data = NULL;
+
+    // Conver to vector of strings
+    vector<string> returnAttrs;
+    unsigned i;
+    for(i = 0; i < attrs.size(); ++i)
+    {
+        attrs.at(i).erase(0, attrs.at(i).find(".") + 1);
+    }
 
     if (dynamic_cast<TableScan*>(in)) {
-        static_cast<TableScan*>(in)->setIterator(NO_OP, "", attrNames, v);
+        static_cast<TableScan*>(in)->setIterator(NO_OP, "", attrs, v);
     } else {
        // static_cast<IndeScan*>(in)->set
 
@@ -52,6 +67,10 @@ RC Filter::getNextTuple(void *data) {
             return -1;
         }
     } else {
+        if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
+            return -1;
+        }
+
     }
 }
 

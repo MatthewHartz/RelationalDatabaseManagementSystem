@@ -1191,12 +1191,12 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
         }
         free(buffer);
         free(key);
-        rmsi.close();
-    } else {
+            } else {
         free(buffer);
         free(key);
     }
-
+    rmsi.close();
+    ix->closeFile(indexHandle);
     // if all went well return 0
     return 0;
 }

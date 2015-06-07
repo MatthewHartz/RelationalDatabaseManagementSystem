@@ -204,7 +204,6 @@ class Filter : public Iterator {
         void getAttributes(vector<Attribute> &attrs) const{};
     private:
         Iterator *in;
-        Condition cond;
 };
 
 
