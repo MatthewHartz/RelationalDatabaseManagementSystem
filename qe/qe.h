@@ -79,12 +79,12 @@ class TableScan : public Iterator
         };
 
         // Start a new iterator given the new compOp and value
-        void setIterator()
+        void setIterator(CompOp compOp, string condAttribute, Value v)
         {
             iter->close();
             delete iter;
             iter = new RM_ScanIterator();
-            rm.scan(tableName, "", NO_OP, NULL, attrNames, *iter);
+            rm.scan(tableName, condAttribute, compOp, v.data, attrNames, *iter);
         };
 
         RC getNextTuple(void *data)
@@ -199,9 +199,12 @@ class Filter : public Iterator {
         );
         ~Filter(){};
 
-        RC getNextTuple(void *data) {return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const{};
+    private:
+        Iterator *in;
+        Condition cond;
 };
 
 
@@ -209,12 +212,16 @@ class Project : public Iterator {
     // Projection operator
     public:
         Project(Iterator *input,                    // Iterator of input R
-              const vector<string> &attrNames){};   // vector containing attribute names
+              const vector<string> &attrNames);   // vector containing attribute names
         ~Project(){};
 
-        RC getNextTuple(void *data) {return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const{};
+
+    private:
+        Iterator *in;
+        vector<string> attrs;
 };
 
 // Optional for the undergraduate solo teams. 5 extra-credit points
