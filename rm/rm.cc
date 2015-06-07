@@ -37,6 +37,7 @@ RelationManager::RelationManager()
             // make sure none of the attributes are null
             for (int i = 0; i < attributes.size(); i++) {
                 if (rbfm->isFieldNull(buffer, i)) {
+                    free(buffer);
                     exit(EXIT_FAILURE);
                 }
             }
@@ -78,6 +79,9 @@ RelationManager::RelationManager()
             } else {
                 t_id->second.push_back(fileMap);
             }
+
+            delete column;
+            delete file;
         }
         rmsi.close();
     }
@@ -991,8 +995,8 @@ RC RM_ScanIterator::close() {
 
 RC RelationManager::createIndex(const string &tableName, const string &attributeName)
 {
+    // Scan tables for tableId where tableName == table-name
     int tableId;
-    // Check to see that tableName exists in the catalog and get the table id
     RID rid;
     void* buffer = malloc(PAGE_SIZE);
     vector<string> attributes;
@@ -1026,21 +1030,47 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
         return -1;
     }
 
+    // Using the tableId and attributeName, check if the index already exists
+    if (doesIndexExist(tableId, attributeName)) {
+        return 0;
+    }
+
     // initialize comp value == attributeName
-    varLength = attributeName.length();
-    compValue = malloc(sizeof(int) + varLength);
-    memcpy((char *) compValue, &varLength, sizeof(int));
-    memcpy((char *) compValue + sizeof(int), attributeName.c_str(), varLength);
+    compValue = malloc(sizeof(int));
+    memcpy(compValue, &tableId, sizeof(int));
+    string compString;
+
+    // initialize scan attribtues
+    attributes.clear();
+    attributes.push_back("column-name");
 
     // Check to see if the attribute exists otherwise ERROR
-    rc = RelationManager::scan("Tables", "column-name", EQ_OP, compValue, attributes, rmsi);
+    rc = RelationManager::scan("Columns", "table-id", EQ_OP, compValue, attributes, rmsi);
 
-    // just making sure something returns that isn't -1 or NULL
+    // this will return all the columns associated with the table, make sure that at least
+    // one of them is the attribute name
     if (rc != -1) {
         while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            int offset = 1;
             if (!rbfm->isFieldNull(buffer, 0)) {
-                //memcpy(&tableId, (char*)buffer + 1, sizeof(int));
+                int cLength;
+                memcpy(&cLength, (char*)buffer + offset, sizeof(int));
+                offset += sizeof(int);
+                char* column = new char[cLength + 1];
+                memcpy(column, (char*)buffer + offset, cLength);
+                offset += cLength;
+                column[cLength] = '\0';
+                compString = std::string(column);
+
+                if (compString == attributeName) {
+                    delete column;
+                    free(buffer);
+                    free(compValue);
+                    break;
+                }
+                delete column;
             } else {
+                // Should never return null, therefore, error if found.
                 free(buffer);
                 free(compValue);
                 return -1;
@@ -1309,6 +1339,22 @@ RC RelationManager::getIndexFileName(const string &tableName,
     
 }
 
+bool RelationManager::doesIndexExist(const int &tableId, const string &attributeName) {
+    auto t_id = indexMap.find(tableId);
+
+    // check and see if the tableID already exists in the map
+    if (t_id == indexMap.end()) {
+        return false;
+    } else {
+        for (col2FileName pair : t_id->second) {
+            if (pair.first == attributeName) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key) { 
     // wrap the getNextEntry from an ix_scaniterator

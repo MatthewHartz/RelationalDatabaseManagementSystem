@@ -139,6 +139,8 @@ public:
     void setIndexDesc(vector<Attribute> desc) { this->indexDescriptor = desc; }
     RC getTableFileNameAndAuthType(const string &tableName, string &fileName, int &authType);
     RC getIndexFileName(const string &tableName, const string &attributeName, string &indexName, RID &rid, int &tableId);
+    bool doesIndexExist(const int &tableId, const string &attributeName);
+
 
     // Extra credit work (10 points)
 public:
