@@ -89,10 +89,14 @@ public:
     void setHandle(FileHandle &fileHandle) { handle = &fileHandle; };
     void setCompOp(const CompOp op) { compOp = op; };
     void setValue(const void *val) { value = val; };
+    void setSlot(int i) { slotNum = i; };
+    void setPage(int i) { pageNum = i; };
     void setConditionAttr(int i) { conditionAttribute = i; };
     void setCondType(AttrType type) { condType = type; };
     void setAttrPlacement(int i) { attrPlacement.push_back(i); };
+    void emptyAttrPlacement() { attrPlacement.clear(); };
     void setAttrTypes(AttrType type) { attrTypes.push_back(type); };
+    void emptyAttrTypes() { attrTypes.clear(); };
     void setScanPage(void *p) { scanPage = p; };
 
     int getPageNum() { return pageNum; };

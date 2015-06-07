@@ -829,6 +829,10 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
     rbfm_ScanIterator.setHandle(fileHandle);
     rbfm_ScanIterator.setCompOp(compOp);
     rbfm_ScanIterator.setValue(value);
+    rbfm_ScanIterator.setSlot(0);
+    rbfm_ScanIterator.setPage(0);
+    rbfm_ScanIterator.emptyAttrPlacement();
+    rbfm_ScanIterator.emptyAttrTypes();
 
     // add the the first page to scanPage and set pageNum and slotNUm
     if ((int ) fileHandle.currentPageNum == rbfm_ScanIterator.getPageNum()) {

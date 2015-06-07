@@ -720,8 +720,8 @@ RC RelationManager::scan(const string &tableName,
     if (rm_ScanIterator.rbfmsi.getNextRecord(rid, data) != RBFM_EOF) {
         int offset = 1;
 
-        // If either of these 2 fields are null, return -1
-        if (rbfm->isFieldNull(data, 0) || rbfm->isFieldNull(data, 1)) {
+        // If the is null, return -1
+        if (rbfm->isFieldNull(data, 0)) {
         	rm_ScanIterator.rbfmsi.close();
             return -1;
         }
@@ -1113,7 +1113,8 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 
     // Close tables file
     rbfm->closeFile(indexesHandle);
-    free(buffer);
+
+    //free(buffer); This was causing double frees
 
     // if all went well return 0
     return 0;
