@@ -491,23 +491,30 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
     // variables used for index insertion
     string indexFile;
     RID indexRid;
-    vector<Attribute> attributes;
     IXFileHandle indexHandle;
-
-    // get attributes for a given table
-    if (getAttributes(tableName, attributes) == -1) {
-        return -1;
-    }
 
     // iterate over each attribute checking if file exist, and if so, inserting into given index file
     int tableId;
-    for (int i = 0; i < attributes.size(); i++) {
-        if (getIndexFileName(tableName, attributes[i].name, indexFile, indexRid, tableId) != -1) {
+    for (int i = 0; i < descriptor.size(); i++) {
+        if (getIndexFileName(tableName, descriptor[i].name, indexFile, indexRid, tableId) != -1) {
+            // read in key
+            void *key = malloc(PAGE_SIZE);
+
+            if (rbfm->openFile(fileName, handle) == -1) {
+                return -1;
+            }
+
+            rbfm->readAttribute(handle, descriptor, rid, descriptor[i].name, key);
+
+            if (rbfm->closeFile(handle) == -1) {
+                return -1;
+            }
+
             if (ix->openFile(indexFile, indexHandle) == -1) {
                 return -1;
             }
 
-            if (ix->insertEntry(indexHandle, attributes[i], data, rid) == -1) {
+            if (ix->insertEntry(indexHandle, descriptor[i], key, rid) == -1) {
                 return -1;
             }
 
@@ -1096,6 +1103,8 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
         return -1;
     }
 
+    attributes.clear();
+
     // create the index file
     string ixFileName(tableName + "_" + attributeName + "_index");
     if(ix->createFile(ixFileName) == -1) {
@@ -1125,10 +1134,68 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
     prepareIndexesRecord(tableId, attributeName, ixFileName, buffer);
     rbfm->insertRecord(indexesHandle, this->getIndexesDesc(), buffer, rid);
 
-    // Close tables file
+    // Close indexes file
     rbfm->closeFile(indexesHandle);
 
     free(buffer); //This was causing double frees
+
+    // Populate index with data from scanned table
+    attributes.push_back(attributeName);
+
+    // get attribute type from attributeName
+    Attribute indexAttr;
+    vector<Attribute> attrs;
+    getAttributes(tableName, attrs);
+
+    for (int i = 0; i < attrs.size(); i++) {
+        if (attrs[i].name == attributeName) {
+            indexAttr = attrs[i];
+            break;
+        }
+    }
+
+    // open ix file handle for writing
+    IXFileHandle indexHandle;
+    if (ix->openFile(ixFileName, indexHandle) == -1) {
+        return -1;
+    }
+
+    // scan over the table and insert entry into the newly created index
+    rc = RelationManager::scan(tableName, "", NO_OP, NULL, attributes, rmsi);
+    void *key = malloc(PAGE_SIZE);
+    buffer = malloc(PAGE_SIZE);
+
+    if (rc != -1) {
+        while (rmsi.getNextTuple(rid, buffer) != RM_EOF){
+            if (!rbfm->isFieldNull(buffer, 0)) {
+                //memcpy(&tableId, (char*)buffer + 1, sizeof(int));
+                int offset = 1;
+                switch (indexAttr.type) {
+                    case TypeInt:
+                    case TypeReal:
+                        memcpy(key, (char*)buffer + offset, sizeof(int));
+                        break;
+                    case TypeVarChar:
+                        int length;
+                        memcpy(&length, (char*)buffer + offset, sizeof(int));
+                        offset += sizeof(int);
+                        memcpy(key, (char*)buffer + offset, length);
+                        break;
+                }
+
+                ix->insertEntry(indexHandle, indexAttr, key, rid);
+            } else {
+                free(buffer);
+                return -1;
+            }
+        }
+        free(buffer);
+        free(key);
+        rmsi.close();
+    } else {
+        free(buffer);
+        free(key);
+    }
 
     // if all went well return 0
     return 0;

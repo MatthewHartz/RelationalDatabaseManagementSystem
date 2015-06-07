@@ -413,7 +413,6 @@ f_data RecordBasedFileManager::getNumberOfFields(const void *record) {
     return numRecords;
 }
 
-
 void* RecordBasedFileManager::extractRecord(int slotNum, const void *page) {
     // TODO: make a guard against asking for an invalid slotNum
     int offset, length;
@@ -439,15 +438,12 @@ int RecordBasedFileManager::decrementFreeSpaceOffset(void *page, int length) {
     return freeSpaceOffset;
 }
 
-
-
 int RecordBasedFileManager::incrementNumRecords(void *page) {
     int numRecords = extractNumRecords(page);
     numRecords++;
     memcpy((char *) page + N_OFFSET, &numRecords, sizeof(int));
     return numRecords;
 }
-
 
 int RecordBasedFileManager::decrementNumRecords(void *page) {
     int numRecords = extractNumRecords(page);
@@ -456,12 +452,12 @@ int RecordBasedFileManager::decrementNumRecords(void *page) {
     return numRecords;
 }
 
-
 void RecordBasedFileManager::updateFreeSpace(int numRecords, int freeSpaceOffset,int pageNum, FileHandle &handle) {
     // we can change this to just extract the current freeSpace and increment by numBytes
     int freeSpace = PAGE_SIZE - (freeSpaceOffset + (numRecords * SLOT_SIZE) + META_INFO);
     handle.freeSpace[pageNum] = freeSpace;
 }
+
 void RecordBasedFileManager::transferRecordToPage(void *page
         , const void *data
         , void *metaData
@@ -502,7 +498,6 @@ void RecordBasedFileManager::extractFieldData(int numFields, int length, void *d
     length -= offset;
     memcpy((char *) data + numNullBytes, (char *) tempData + offset, length);
 }
-
 
 bool RecordBasedFileManager::isFieldNull(const void *data, int i) {
     // create an bitmask to test if the field is null
@@ -556,7 +551,6 @@ std::string RecordBasedFileManager::extractType(const void *data, int *offset, A
     }
 }
 
-
 int RecordBasedFileManager::buildMetaData(const void *data, const vector<Attribute> &descriptor, void *field) {
     short dataOffset = 0;
 
@@ -609,9 +603,6 @@ void RecordBasedFileManager::getSlotFile(int slotNum, const void *page, int *off
     memcpy(offset, (char *) page + location, sizeof(int));
     memcpy(length, (char *) page + location + sizeof(int), sizeof(int));
 }
-
-
-
 
 int RecordBasedFileManager::findOpenSlot(FileHandle &handle, int size, RID &rid) {
     // first we need to check and see if the current page has available space
@@ -699,7 +690,6 @@ int RecordBasedFileManager::extractNumRecords(const void *page) {
     return numRecords;
 }
 
-
 void RecordBasedFileManager::updateSlotDirectory(RID &rid, int pageNum, int slotNum) {
     rid.pageNum = pageNum;
     rid.slotNum = slotNum;
@@ -710,7 +700,6 @@ int RecordBasedFileManager::getFreeSpaceOffset(const void *data) {
     memcpy(&freeSpaceOffset, (char *) data + F_OFFSET, sizeof(int));
     return freeSpaceOffset;
 }
-
 
 void RecordBasedFileManager::setUpNewPage(void *newPage
         , const void *data
@@ -747,13 +736,11 @@ void RecordBasedFileManager::setUpNewPage(void *newPage
     handle.freeSpace.push_back(freeSpace);
 }
 
-
 int RecordBasedFileManager::extractFreeSpaceOffset(const void *page) {
      int freeSpaceOffset;
      memcpy(&freeSpaceOffset, (char *) page + F_OFFSET, sizeof(int));
      return freeSpaceOffset;
 }
-
 
 void RecordBasedFileManager::compactMemory(int offset, int deletedLength, void *data, int freeSpace) {
     // extract FreeSpaceOffset
@@ -822,7 +809,6 @@ RBFM_ScanIterator::~RBFM_ScanIterator() {
         //free(scanPage);
 }
 
-
 RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor,
                                         const string &conditionAttribute, const CompOp compOp,
                                         const void *value, const vector<string> &attributeNames,
@@ -868,7 +854,6 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
     }
     return 0;
 }
-
 
 bool RBFM_ScanIterator::isEndOfPage(void *page, int numRecords, int slotNum, int pageNum) {
     int startOfSlotDirectoryOffset = RecordBasedFileManager::getStartOfDirectoryOffset(numRecords, page);
@@ -972,7 +957,6 @@ RC RBFM_ScanIterator::close() {
 
     return 0;
 }
-
 
 bool RBFM_ScanIterator::processIntComp(int condOffset, CompOp compOp, const void *value, const void *record) {
     if (compOp == NO_OP) {
