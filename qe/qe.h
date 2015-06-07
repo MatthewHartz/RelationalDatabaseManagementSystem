@@ -79,12 +79,12 @@ class TableScan : public Iterator
         };
 
         // Start a new iterator given the new compOp and value
-        void setIterator(CompOp compOp, string condAttribute, Value v)
+        void setIterator(CompOp compOp, string condAttribute, vector<string> attrs, Value v)
         {
             iter->close();
             delete iter;
             iter = new RM_ScanIterator();
-            rm.scan(tableName, condAttribute, compOp, v.data, attrNames, *iter);
+            rm.scan(tableName, condAttribute, compOp, v.data, attrs, *iter);
         };
 
         RC getNextTuple(void *data)
@@ -279,7 +279,7 @@ class Aggregate : public Iterator {
         Aggregate(Iterator *input,          // Iterator of input R
                   Attribute aggAttr,        // The attribute over which we are computing an aggregate
                   AggregateOp op            // Aggregate operation
-        ){};
+        );
 
         // Optional for everyone. 5 extra-credit points
         // Group-based hash aggregation
@@ -290,11 +290,29 @@ class Aggregate : public Iterator {
         ){};
         ~Aggregate(){};
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // Please name the output attribute as aggregateOp(aggAttr)
         // E.g. Relation=rel, attribute=attr, aggregateOp=MAX
         // output attrname = "MAX(rel.attr)"
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+
+        // setters
+        void setIterator(Iterator *input) { aggregateIterator = input; };
+        void setAttribute(Attribute attr) { aggregateAttr = attr; };
+        void setOperator(AggregateOp op) { aggregateOp = op; };
+        void setValue(float value) { aggregateValue = value; };
+
+        // getters
+        Iterator* getIterator(void) { return aggregateIterator; };
+        Attribute getAttribute(void) { return aggregateAttr; };
+        AggregateOp getOperator(void) { return aggregateOp; };
+        float getValue(void) { return aggregateValue; };
+
+    private:
+        Iterator *aggregateIterator;
+        Attribute aggregateAttr;
+        AggregateOp aggregateOp;
+        float aggregateValue; // This is the value that is returned from aggregate ie MAX,MIN,COUNT,AVG,SUM
 };
 
 #endif
