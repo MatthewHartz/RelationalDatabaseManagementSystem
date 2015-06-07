@@ -897,9 +897,13 @@ void addAttributeToDesc(string name, AttrType type, AttrLength length, vector<At
 void prepareTablesRecord(const int id, const string &table, const string &file, AuthorizationType authType, void *buffer) {
     int offset = 0;
     int length = 0;
-    int numFields = 3;
+    int numFields = 4;
 
     char nullSection = 0;
+
+    // store num fields
+    //memcpy((char*)buffer + offset, &numFields, sizeof(short));
+    //offset += sizeof(short);
 
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
@@ -935,6 +939,10 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 
     char nullSection = 0;
 
+    // store num fields
+    //memcpy((char*)buffer + offset, &numFields, sizeof(short));
+    //offset += sizeof(short);
+
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
     offset += 1;
@@ -962,9 +970,13 @@ void prepareColumnsRecord(const int id, const string &name, const AttrType type,
 void prepareIndexesRecord(const int tableId, const string &column, const string &fileName, void *buffer) {
     unsigned int offset = 0;
     int l = 0;
-    int numFields = 5;
+    int numFields = 3;
 
     char nullSection = 0;
+
+    // store num fields
+    //memcpy((char*)buffer + offset, &numFields, sizeof(short));
+    //offset += sizeof(short);
 
     // Store null data field, so ReadPage works correctly
     memcpy((char *)buffer + offset, &nullSection, 1);
@@ -978,6 +990,7 @@ void prepareIndexesRecord(const int tableId, const string &column, const string 
     memcpy((char *)buffer + offset, &l, sizeof(int));
     offset += sizeof(int);
     memcpy((char *)buffer + offset, column.c_str(), l);
+    offset += l;
 
     l = fileName.length();
     memcpy((char *)buffer + offset, &l, sizeof(int));
@@ -1107,14 +1120,15 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
         return -1;
     }
 
-    // Add table desc to tables
+    // add index record to indexes
+    buffer = malloc(PAGE_SIZE);
     prepareIndexesRecord(tableId, attributeName, ixFileName, buffer);
-    rbfm->insertRecord(indexesHandle, this->getTablesDesc(), buffer, rid);
+    rbfm->insertRecord(indexesHandle, this->getIndexesDesc(), buffer, rid);
 
     // Close tables file
     rbfm->closeFile(indexesHandle);
 
-    //free(buffer); This was causing double frees
+    free(buffer); //This was causing double frees
 
     // if all went well return 0
     return 0;

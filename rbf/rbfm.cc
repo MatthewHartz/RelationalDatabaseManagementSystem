@@ -93,6 +93,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
                 return -1;
             }
             free(fileHandle.currentPage);
+            fileHandle.currentPage = NULL;
         }
 
         // we need to append a new page
@@ -107,6 +108,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         // Now let's add the new record
         setUpNewPage(newPage, data, length, fileHandle, metaData, metaNumBytes, recordDescriptor.size());
         fileHandle.appendPage(newPage);
+
         return 0;
     } else {
 
@@ -948,8 +950,6 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         if (isCompTrue) {
             // extract the attributes
             extractScannedData(record, data, length, numFields, nullField);
-            int test;
-            memcpy(&test, (char *) data + 1, sizeof(int));
 
             condNotMet = false;
             rc = 0;
