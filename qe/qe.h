@@ -231,12 +231,44 @@ class BNLJoin : public Iterator {
                TableScan *rightIn,           // TableScan Iterator of input S
                const Condition &condition,   // Join condition
                const unsigned numRecords     // # of records can be loaded into memory, i.e., memory block size (decided by the optimizer)
-        ){};
+        );
         ~BNLJoin(){};
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const{};
+
+        // setters
+        void setLeftIterator(Iterator *input) { leftIn = input; };
+        void setRightIterator(TableScan *input) { rightIn = input; };
+        void setLeftJoinAttribute(Attribute attribute) { leftJoinAttribute = attribute; };
+        void setRightJoinAttribute(Attribute attribute) { rightJoinAttribute = attribute; };
+        void setNumRecords(int num) { numRecords = num; };
+
+        // getters
+        Iterator* getLeftIterator(void) { return leftIn; };
+        TableScan* getRightIterator(void) { return rightIn; };
+        Attribute getLeftJoinAttribute(void) { return leftJoinAttribute; };
+        Attribute getRightJoinAttribute(void) { return rightJoinAttribute; };
+        int getNumRecords(void) { return numRecords; };
+        unordered_map<int, vector<void*>> getIntMap(void) { return intMap; };
+        unordered_map<int, vector<void*>> getRealMap(void) { return realMap; };
+        unordered_map<int, vector<void*>> getVarCharMap(void) { return varCharMap; };
+
+    private:
+        Iterator *leftIn;
+        TableScan *rightIn;
+        Attribute leftJoinAttribute;
+        Attribute rightJoinAttribute;
+        int numRecords;
+        bool innerFinished = true; // This variable lets the right outer loop know it needs to refresh the map
+        unordered_map<int, vector<void*>> intMap = new unordered_map<int, vector<void*>>();
+        unordered_map<int, vector<void*>> realMap = new unordered_map<int, vector<void*>>();
+        unordered_map<int, vector<void*>> varCharMap = new unordered_map<int, vector<void*>>();
+
+        int intHashFunction(int data, int numRecords);
+        int intHashFunction(float data, int numRecords);
+        int intHashFunction(string data, int numRecords);
 };
 
 
