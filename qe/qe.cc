@@ -22,12 +22,14 @@ Filter::Filter(Iterator* input, const Condition &condition) {
     attr.erase(0, attr.find(".") + 1);
     if (dynamic_cast<TableScan*>(in)) {
         static_cast<TableScan*>(in)->setIterator(condition.op, attr, returnAttrs, condition.rhsValue);
-    } else {
+    } else if (dynamic_cast<IndexScan*>(in)) {
         if (!condition.bRhsIsAttr && (condition.op == GE_OP || condition.op == LE_OP)) {
             static_cast<IndexScan*>(in)->setIterator(condition.rhsValue.data, NULL, true, false);
         } else if(condition.bRhsIsAttr && (condition.op == GE_OP || condition.op == LE_OP)) {
             // TODO not sure what to do here
         }
+    } else if (dynamic_cast<BNLJoin*>(in)) {
+        static_cast<BNLJoin*>(in)->setIterator(input, condition);
     }
 }
 
@@ -37,11 +39,18 @@ RC Filter::getNextTuple(void *data) {
         if (static_cast<TableScan*>(in)->getNextTuple(data) == -1) {
             return -1;
         }
-    } else {
+    } else if (dynamic_cast<IndexScan*>(in)) {
         if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
             return -1;
         }
-
+    } else if (dynamic_cast<BNLJoin*>(in)) {
+        if (static_cast<BNLJoin*>(in)->getNextTuple(data) == -1) {
+            return -1;
+        }
+    } else if (dynamic_cast<INLJoin*>(in)) {
+        if (static_cast<INLJoin*>(in)->getNextTuple(data) == -1) {
+            return -1;
+        }
     }
 }
 
@@ -61,20 +70,34 @@ Project::Project(Iterator* input, const vector<string> &attrNames) {
 
     if (dynamic_cast<TableScan*>(in)) {
         static_cast<TableScan*>(in)->setIterator(NO_OP, "", attrs, v);
-    } else {
+    } else if (dynamic_cast<IndexScan*>(in)) {
        // static_cast<IndeScan*>(in)->set
+    } else if (dynamic_cast<BNLJoin*>(in)) {
+
+    } else if (dynamic_cast<INLJoin*>(in)) {
 
     }
 }
 
 // ... the rest of your implementations go here
 RC Project::getNextTuple(void *data) {
-    // here we can use in and cond to do stuff    
+    // here we can use in and cond to do stuff
     if (dynamic_cast<TableScan*>(in)) {
         if (static_cast<TableScan*>(in)->getNextTuple(data) == -1) {
             return -1;
         }
-    } else {
+    } else if (dynamic_cast<IndexScan*>(in)) {
+        if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
+            return -1;
+        }
+    } else if (dynamic_cast<BNLJoin*>(in)) {
+        if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
+            return -1;
+        }
+    } else if (dynamic_cast<INLJoin*>(in)) {
+        if (static_cast<INLJoin*>(in)->getNextTuple(data) == -1) {
+            return -1;
+        }
     }
 }
 
@@ -454,121 +477,182 @@ RC BNLJoin::getNextTuple(void *data) {
     void *rightBuffer = malloc(PAGE_SIZE);
     while (getRightIterator()->getNextTuple(rightBuffer) != -1) {
         switch (getRightJoinAttribute().type) {
-        case TypeInt: {
-            int returnInt;
-            int bufferSize;
-            int offset = 0;
+            case TypeInt: {
+                int returnInt;
+                int bufferSize;
+                int offset = 0;
 
-            // iterate over buffer, collect the correct attribute, then finish iterating
-            // and store the buffer size
-            vector<Attribute> attrs;
-            getRightIterator()->getAttributes(attrs);
+                // iterate over buffer, collect the correct attribute, then finish iterating
+                // and store the buffer size
+                vector<Attribute> attrs;
+                getRightIterator()->getAttributes(attrs);
 
-            // adjust for nullindicator size using ceiling function
-            offset = 1 + ((attrs.size() - 1) / 8);
+                // adjust for nullindicator size using ceiling function
+                offset = 1 + ((attrs.size() - 1) / 8);
 
-            for (int i = 0; i < attrs.size(); i++) {
-                if (!RecordBasedFileManager::isFieldNull(rightBuffer, i)) {
-                    if (attrs[i].name == getRightJoinAttribute().name) {
-                        memcpy(&returnInt, (char*)rightBuffer + offset, sizeof(int));
-                    }
-
-                    // skip over the attribute
-                    switch (attrs[i].type) {
-                    case TypeInt:
-                        offset += sizeof(int);
-                        break;
-                    case TypeReal:
-                        offset += sizeof(float);
-                        break;
-                    case TypeVarChar:
-                        int length;
-                        memcpy(&length, (char*)rightBuffer + offset, sizeof(int));
-                        offset += sizeof(int) + length;
-                        break;
-                    }
-                }
-            }
-
-            // save bufferSize
-            bufferSize = offset;
-
-            // test to see if the attribute exists in the map
-            int mapSize = intHashMap.size();
-
-            auto hashVal = intHashMap.find(returnInt);
-
-            // hash has been found
-            if (!(hashVal == intHashMap.end())) {
-                // iterate over list and attempt to find key
-                for (intMapEntry entry : hashVal->second) {
-                    if (entry.attr == returnInt) {
-                        // create a new null indicator for merged entries
-                        int leftAttrsCount = getLeftNumAttrs();
-                        int rightAttrsCount = getRightNumAttrs();
-                        int leftIndicatorSize = 1 + (( leftAttrsCount - 1) / 8);
-                        int rightIndicatorSize = 1 + (( rightAttrsCount - 1) / 8);
-                        int indicatorSize = 1 + (((leftAttrsCount + rightAttrsCount) - 1) / 8);
-
-                        unsigned char *nullsIndicator = (unsigned char *) malloc(indicatorSize);
-                        memset(nullsIndicator, 0, indicatorSize);
-
-                        // initialize the indicator
-                        // for left indicator, just copy all the bytes straight over.
-                        memcpy((char*)nullsIndicator, entry.buffer, leftIndicatorSize);
-
-                        // iterate over all bits for rightAttrs, then merge them into nullsIndicator
-                        int position = leftAttrsCount;
-                        for (int i = 0; i < rightAttrsCount; i++) {
-                            // read the fragmented byte
-                            char currentByte;
-                            memcpy(&currentByte, nullsIndicator + (leftIndicatorSize - 1), sizeof(char));
-
-                            // add in the remaining bits using the right indicator
-                            char rightByte;
-                            for (int j = position % 8; j < 8 && i < rightAttrsCount; i++, j++, position++) {
-                                //char mask = 128 >> j;
-                                //currentByte |= mask;
-
-                                // get bit of right buffer at position i
-                                memcpy(&rightByte, rightBuffer + (i / 8), sizeof(char));
-                                char mask = 128 >> i % 8;
-
-                                // clear other bits that we don't want
-                                char temp = rightByte & mask > 0 ? 128 : 0;
-
-                                // merge rightByte and currentByte
-                                temp >>= j;
-                                currentByte |= temp;
-                            }
-
-                            // copy back into nulls Indicator
-                            memcpy((char*)nullsIndicator + (position / 8), &currentByte, sizeof(char));
+                for (int i = 0; i < attrs.size(); i++) {
+                    if (!RecordBasedFileManager::isFieldNull(rightBuffer, i)) {
+                        if (attrs[i].name == getRightJoinAttribute().name) {
+                            memcpy(&returnInt, (char*)rightBuffer + offset, sizeof(int));
                         }
 
-                        // return combine null indicator with 2 buffers (minus their seperate indicators)
-                        int offset = 0;
-                        memcpy((char*)data + offset, nullsIndicator, indicatorSize);
-                        offset += indicatorSize;
-                        memcpy((char*)data + offset, (char*)entry.buffer + leftIndicatorSize, entry.size - leftIndicatorSize);
-                        offset += entry.size - leftIndicatorSize;
-                        memcpy((char*)data + offset, (char*)rightBuffer + rightIndicatorSize, bufferSize - rightIndicatorSize);
-
-                        free(rightBuffer);
-                        return 0;
+                        // skip over the attribute
+                        switch (attrs[i].type) {
+                        case TypeInt:
+                            offset += sizeof(int);
+                            break;
+                        case TypeReal:
+                            offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int length;
+                            memcpy(&length, (char*)rightBuffer + offset, sizeof(int));
+                            offset += sizeof(int) + length;
+                            break;
+                        }
                     }
                 }
+
+                // save bufferSize
+                bufferSize = offset;
+
+                // test to see if the attribute exists in the map
+                auto hashVal = intHashMap.find(returnInt);
+
+                // hash has been found
+                if (!(hashVal == intHashMap.end())) {
+                    // iterate over list and attempt to find key
+                    for (intMapEntry entry : hashVal->second) {
+                        if (entry.attr == returnInt) {
+                            joinBufferData(entry.buffer, entry.size, rightBuffer, bufferSize, data);
+                            free(rightBuffer);
+                            return 0;
+                        }
+                    }
+                }
+                break;
             }
-            break;
-        }
-        case TypeReal:
-            break;
-        case TypeVarChar:
-            break;
-        }
+            case TypeReal: {
+                float returnReal;
+                int bufferSize;
+                int offset = 0;
 
+                // iterate over buffer, collect the correct attribute, then finish iterating
+                // and store the buffer size
+                vector<Attribute> attrs;
+                getRightIterator()->getAttributes(attrs);
 
-        // get the attribute value
+                // adjust for nullindicator size using ceiling function
+                offset = 1 + ((attrs.size() - 1) / 8);
+
+                for (int i = 0; i < attrs.size(); i++) {
+                    if (!RecordBasedFileManager::isFieldNull(rightBuffer, i)) {
+                        if (attrs[i].name == getRightJoinAttribute().name) {
+                            memcpy(&returnReal, (char*)rightBuffer + offset, sizeof(float));
+                        }
+
+                        // skip over the attribute
+                        switch (attrs[i].type) {
+                        case TypeInt:
+                            offset += sizeof(int);
+                            break;
+                        case TypeReal:
+                            offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int length;
+                            memcpy(&length, (char*)rightBuffer + offset, sizeof(int));
+                            offset += sizeof(int) + length;
+                            break;
+                        }
+                    }
+                }
+
+                // save bufferSize
+                bufferSize = offset;
+
+                // test to see if the attribute exists in the map
+                auto hashVal = realHashMap.find(returnReal);
+
+                // hash has been found
+                if (!(hashVal == realHashMap.end())) {
+                    // iterate over list and attempt to find key
+                    for (realMapEntry entry : hashVal->second) {
+                        if (entry.attr == returnReal) {
+                            joinBufferData(entry.buffer, entry.size, rightBuffer, bufferSize, data);
+                            free(rightBuffer);
+                            return 0;
+                        }
+                    }
+                }
+                break;
+            }
+            case TypeVarChar: {
+                string returnVarChar;
+                int bufferSize;
+                int offset = 0;
+
+                // iterate over buffer, collect the correct attribute, then finish iterating
+                // and store the buffer size
+                vector<Attribute> attrs;
+                getRightIterator()->getAttributes(attrs);
+
+                // adjust for nullindicator size using ceiling function
+                offset = 1 + ((attrs.size() - 1) / 8);
+
+                for (int i = 0; i < attrs.size(); i++) {
+                    if (!RecordBasedFileManager::isFieldNull(rightBuffer, i)) {
+                        if (attrs[i].name == getRightJoinAttribute().name) {
+                            int length;
+                            int loffset = 1;
+                            memcpy(&length, (char*)rightBuffer + loffset, sizeof(int));
+                            loffset += sizeof(int);
+                            char* value = new char[length + 1];
+                            memcpy(value, (char*)rightBuffer + loffset, length);
+                            loffset += length;
+                            value[length] = '\0';
+                            returnVarChar = std::string(value);
+
+                            memcpy(&returnVarChar, (char*)rightBuffer + offset, sizeof(int));
+                        }
+
+                        // skip over the attribute
+                        switch (attrs[i].type) {
+                        case TypeInt:
+                            offset += sizeof(int);
+                            break;
+                        case TypeReal:
+                            offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int length;
+                            memcpy(&length, (char*)rightBuffer + offset, sizeof(int));
+                            offset += sizeof(int) + length;
+                            break;
+                        }
+                    }
+                }
+
+                // save bufferSize
+                bufferSize = offset;
+
+                // test to see if the attribute exists in the map
+                auto hashVal = varCharHashMap.find(returnVarChar);
+
+                // hash has been found
+                if (!(hashVal == varCharHashMap.end())) {
+                    // iterate over list and attempt to find key
+                    for (varCharMapEntry entry : hashVal->second) {
+                        if (entry.attr == returnVarChar) {
+                            joinBufferData(entry.buffer, entry.size, rightBuffer, bufferSize, data);
+                            free(rightBuffer);
+                            return 0;
+                        }
+                    }
+                }
+                break;
+            }
+        }
     }
 
     free(rightBuffer);
@@ -587,6 +671,72 @@ RC BNLJoin::getNextTuple(void *data) {
     setRightIterator(tc);
 
     return getNextTuple(data);
+}
+
+void BNLJoin::getAttributes(vector<Attribute> &attrs) const {
+    vector<Attribute> leftAttrs;
+    getLeftIterator()->getAttributes(leftAttrs);
+    vector<Attribute> rightAttrs;
+    getRightIterator()->getAttributes(rightAttrs);
+
+    attrs.reserve( leftAttrs.size() + rightAttrs.size());
+    attrs.insert( attrs.end(), leftAttrs.begin(), leftAttrs.end());
+    attrs.insert( attrs.end(), rightAttrs.begin(), rightAttrs.end());
+}
+
+RC BNLJoin::joinBufferData(void *buffer1, int buffer1Len, void* buffer2, int buffer2Len, void* data) {
+    // create a new null indicator for merged entries
+    int leftAttrsCount = getLeftNumAttrs();
+    int rightAttrsCount = getRightNumAttrs();
+    int leftIndicatorSize = 1 + (( leftAttrsCount - 1) / 8);
+    int rightIndicatorSize = 1 + (( rightAttrsCount - 1) / 8);
+    int indicatorSize = 1 + (((leftAttrsCount + rightAttrsCount) - 1) / 8);
+
+    unsigned char *nullsIndicator = (unsigned char *) malloc(indicatorSize);
+    memset(nullsIndicator, 0, indicatorSize);
+
+    // initialize the indicator
+    // for left indicator, just copy all the bytes straight over.
+    memcpy((char*)nullsIndicator, buffer1, leftIndicatorSize);
+
+    // iterate over all bits for rightAttrs, then merge them into nullsIndicator
+    int position = leftAttrsCount;
+    for (int i = 0; i < rightAttrsCount; i++) {
+        // read the fragmented byte
+        char currentByte;
+        memcpy(&currentByte, nullsIndicator + (leftIndicatorSize - 1), sizeof(char));
+
+        // add in the remaining bits using the right indicator
+        char rightByte;
+        for (int j = position % 8; j < 8 && i < rightAttrsCount; i++, j++, position++) {
+            //char mask = 128 >> j;
+            //currentByte |= mask;
+
+            // get bit of right buffer at position i
+            memcpy(&rightByte, buffer2 + (i / 8), sizeof(char));
+            char mask = 128 >> i % 8;
+
+            // clear other bits that we don't want
+            char temp = rightByte & mask > 0 ? 128 : 0;
+
+            // merge rightByte and currentByte
+            temp >>= j;
+            currentByte |= temp;
+        }
+
+        // copy back into nulls Indicator
+        memcpy((char*)nullsIndicator + (position / 8), &currentByte, sizeof(char));
+    }
+
+    // return combine null indicator with 2 buffers (minus their seperate indicators)
+    int offset = 0;
+    memcpy((char*)data + offset, nullsIndicator, indicatorSize);
+    offset += indicatorSize;
+    memcpy((char*)data + offset, (char*)buffer1 + leftIndicatorSize, buffer1Len - leftIndicatorSize);
+    offset += buffer1Len - leftIndicatorSize;
+    memcpy((char*)data + offset, (char*)buffer2 + rightIndicatorSize, buffer2Len - rightIndicatorSize);
+
+    return 0;
 }
 
 int BNLJoin::intHashFunction(int data, int numRecords) {

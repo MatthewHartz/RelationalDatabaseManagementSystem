@@ -263,9 +263,27 @@ class BNLJoin : public Iterator {
         );
         ~BNLJoin(){};
 
+        // Start a new iterator given the new key range
+        void setIterator(Iterator *iter, const Condition condition)
+        {
+            iter->~Iterator();
+            delete iter;
+
+            // determine which iterate has been given to use (left or right)
+            string leftAttr = condition.lhsAttr;
+
+
+            // determine if
+
+            //string tablename = condition.
+
+            //iter = new RM_ScanIterator();
+            //rm.scan(tableName, condAttribute, compOp, v.data, attrs, *iter);
+        };
+
         RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
 
         // setters
         void setLeftIterator(Iterator *input) { leftIn = input; };
@@ -277,13 +295,13 @@ class BNLJoin : public Iterator {
         void setNumRecords(int num) { numRecords = num; };
 
         // getters
-        Iterator* getLeftIterator(void) { return leftIn; };
-        TableScan* getRightIterator(void) { return rightIn; };
-        Attribute getLeftJoinAttribute(void) { return leftJoinAttribute; };
-        Attribute getRightJoinAttribute(void) { return rightJoinAttribute; };
-        int getLeftNumAttrs(void) { return leftNumAttrs; };
-        int getRightNumAttrs(void) { return rightNumAttrs; };
-        int getNumRecords(void) { return numRecords; };
+        Iterator* getLeftIterator(void) const { return leftIn; };
+        TableScan* getRightIterator(void) const { return rightIn; };
+        Attribute getLeftJoinAttribute(void) const { return leftJoinAttribute; };
+        Attribute getRightJoinAttribute(void) const { return rightJoinAttribute; };
+        int getLeftNumAttrs(void) const { return leftNumAttrs; };
+        int getRightNumAttrs(void) const { return rightNumAttrs; };
+        int getNumRecords(void) const { return numRecords; };
 
     private:
         Iterator *leftIn;
@@ -297,6 +315,8 @@ class BNLJoin : public Iterator {
         intMap intHashMap;
         realMap realHashMap;
         varCharMap varCharHashMap;
+
+        RC joinBufferData(void *buffer1, int buffer1Len, void* buffer2, int buffer2Len, void* data);
 
         // these might be unnecessary
         int intHashFunction(int data, int numRecords);
