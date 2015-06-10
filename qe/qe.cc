@@ -220,6 +220,7 @@ BNLJoin::BNLJoin(Iterator *leftIn,            // Iterator of input R
 }
 
 RC BNLJoin::getNextTuple(void *data) {
+    // TODO We may need to delete buffers in map on clear
     int counter = 0;
 
     // Update the map
@@ -303,13 +304,48 @@ RC BNLJoin::getNextTuple(void *data) {
 
                     // iterate over buffer, collect the correct attribute, then finish iterating
                     // and store the buffer size
-                    memcpy(&returnReal, (char*)buffer + 1, sizeof(float));
+                    vector<Attribute> attrs;
+                    getLeftIterator()->getAttributes(attrs);
+
+                    // adjust for nullindicator size using ceiling function
+                    offset = 1 + ((attrs.size() - 1) / 8);
+
+                    // malloc the new buffer
+                    void *buf = malloc(PAGE_SIZE);
+
+                    for (int i = 0; i < attrs.size(); i++) {
+                        if (!RecordBasedFileManager::isFieldNull(buffer, i)) {
+                            if (attrs[i].name == getLeftJoinAttribute().name) {
+                                memcpy(&returnReal, (char*)buffer + offset, sizeof(int));
+                            }
+
+                            // skip over the attribute
+                            switch (attrs[i].type) {
+                            case TypeInt:
+                                offset += sizeof(int);
+                                break;
+                            case TypeReal:
+                                offset += sizeof(float);
+                                break;
+                            case TypeVarChar:
+                                int length;
+                                memcpy(&length, (char*)buffer + offset, sizeof(int));
+                                offset += sizeof(int) + length;
+                                break;
+                            }
+                        }
+                    }
+
+                    // save bufferSize
+                    bufferSize = offset;
+                    void *entryBuffer = malloc(bufferSize);
+                    memcpy(entryBuffer, buffer, bufferSize);
 
                     // store into map
-                    //int hash = realHashFunction(returnReal, numRecords);
+                    //int hash = intHashFunction(returnInt, numRecords);
 
                     auto hashVal = realHashMap.find(returnReal);
-                    realMapEntry entry = { returnReal, buffer, bufferSize };
+                    realMapEntry entry = { returnReal, entryBuffer, bufferSize };
 
                     // check and see if the tableID already exists in the map
                     if (hashVal == realHashMap.end()) {
@@ -334,21 +370,58 @@ RC BNLJoin::getNextTuple(void *data) {
 
                     // iterate over buffer, collect the correct attribute, then finish iterating
                     // and store the buffer size
-                    int length;
-                    int offset = 1;
-                    memcpy(&length, (char*)buffer + offset, sizeof(int));
-                    offset += sizeof(int);
-                    char* value = new char[length + 1];
-                    memcpy(value, (char*)buffer + offset, length);
-                    offset += length;
-                    value[length] = '\0';
-                    returnVarChar = std::string(value);
+                    vector<Attribute> attrs;
+                    getLeftIterator()->getAttributes(attrs);
+
+                    // adjust for nullindicator size using ceiling function
+                    offset = 1 + ((attrs.size() - 1) / 8);
+
+                    // malloc the new buffer
+                    void *buf = malloc(PAGE_SIZE);
+
+                    for (int i = 0; i < attrs.size(); i++) {
+                        if (!RecordBasedFileManager::isFieldNull(buffer, i)) {
+                            if (attrs[i].name == getLeftJoinAttribute().name) {
+                                int length;
+                                int loffset = 1;
+                                memcpy(&length, (char*)buffer + loffset, sizeof(int));
+                                loffset += sizeof(int);
+                                char* value = new char[length + 1];
+                                memcpy(value, (char*)buffer + loffset, length);
+                                loffset += length;
+                                value[length] = '\0';
+                                returnVarChar = std::string(value);
+
+                                memcpy(&returnVarChar, (char*)buffer + offset, sizeof(int));
+                            }
+
+                            // skip over the attribute
+                            switch (attrs[i].type) {
+                            case TypeInt:
+                                offset += sizeof(int);
+                                break;
+                            case TypeReal:
+                                offset += sizeof(float);
+                                break;
+                            case TypeVarChar:
+                                int length;
+                                memcpy(&length, (char*)buffer + offset, sizeof(int));
+                                offset += sizeof(int) + length;
+                                break;
+                            }
+                        }
+                    }
+
+                    // save bufferSize
+                    bufferSize = offset;
+                    void *entryBuffer = malloc(bufferSize);
+                    memcpy(entryBuffer, buffer, bufferSize);
 
                     // store into map
-                    //int hash = varCharHashFunction(returnVarChar, numRecords);
+                    //int hash = intHashFunction(returnInt, numRecords);
 
                     auto hashVal = varCharHashMap.find(returnVarChar);
-                    varCharMapEntry entry = { returnVarChar, buffer, bufferSize };
+                    varCharMapEntry entry = { returnVarChar, entryBuffer, bufferSize };
 
                     // check and see if the tableID already exists in the map
                     if (hashVal == varCharHashMap.end()) {
