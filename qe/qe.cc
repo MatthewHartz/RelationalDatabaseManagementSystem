@@ -42,11 +42,26 @@ RC Filter::getNextTuple(void *data) {
             // TODO Handle Nulls
             // we are at the position, test its value
             if (leftConditionPos == i) {
-                memcpy((char*)leftValue, data + offset, sizeof(int));
+                switch (leftConditionAttr.type) {
+                case TypeInt: memcpy((char*)leftValue, data + offset, sizeof(int));
+                    break;
+                case TypeReal: memcpy((char*)leftValue, data + offset, sizeof(float));
+                    break;
+                case TypeVarChar: memcpy((char*)leftValue, data + offset, leftConditionAttr.length + sizeof(int));
+                    break;
+                }
+
             }
 
             if (filterCondition.bRhsIsAttr && rightConditionPos == i) {
-                memcpy((char*)rightValue, data + offset, sizeof(int));
+                switch (rightConditoinAttr.type) {
+                case TypeInt: memcpy((char*)rightValue, data + offset, sizeof(int));
+                    break;
+                case TypeReal: memcpy((char*)rightValue, data + offset, sizeof(float));
+                    break;
+                case TypeVarChar: memcpy((char*)rightValue, data + offset, rightConditoinAttr.length + sizeof(int));
+                    break;
+                }
             }
 
             // skip over the attribute
