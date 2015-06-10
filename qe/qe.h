@@ -231,8 +231,14 @@ class Filter : public Iterator {
         RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const{};
+        bool compareValues(void *left, void* right);
     private:
         Iterator *in;
+        int leftConditionPos;
+        Attribute leftConditionAttr;
+        int rightConditionPos;
+        Attribute rightConditoinAttr;
+        Condition filterCondition;
 };
 
 

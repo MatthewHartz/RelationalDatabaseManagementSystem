@@ -3,55 +3,150 @@
 
 Filter::Filter(Iterator* input, const Condition &condition) {
     in = input;
-    string attr = condition.bRhsIsAttr ? condition.rhsAttr : condition.lhsAttr;
+    filterCondition = condition;
+    //string attr = condition.bRhsIsAttr ? condition.rhsAttr : condition.lhsAttr;
 
     // initializes to return all attributes
     vector<Attribute> attrs;
     in->getAttributes(attrs);
 
-    // Conver to vector of strings
-    vector<string> returnAttrs;
-    unsigned i;
-    for(i = 0; i < attrs.size(); ++i)
+    // Search for left and right condition positions
+    for(unsigned i = 0; i < attrs.size(); ++i)
     {
-        // convert to char *
-        attrs.at(i).name.erase(0, attrs.at(i).name.find(".") + 1);
-        returnAttrs.push_back(attrs.at(i).name);
-    }
-
-    attr.erase(0, attr.find(".") + 1);
-    if (dynamic_cast<TableScan*>(in)) {
-        static_cast<TableScan*>(in)->setIterator(condition.op, attr, returnAttrs, condition.rhsValue);
-    } else if (dynamic_cast<IndexScan*>(in)) {
-        if (!condition.bRhsIsAttr && (condition.op == GE_OP || condition.op == LE_OP)) {
-            static_cast<IndexScan*>(in)->setIterator(condition.rhsValue.data, NULL, true, false);
-        } else if(condition.bRhsIsAttr && (condition.op == GE_OP || condition.op == LE_OP)) {
-            // TODO not sure what to do here
+        if (attrs[i].name == condition.lhsAttr) {
+            leftConditionAttr = attrs[i];
+            leftConditionPos = i;
         }
-    } else if (dynamic_cast<BNLJoin*>(in)) {
-        static_cast<BNLJoin*>(in)->setIterator(input, condition);
+
+        if (condition.bRhsIsAttr && attrs[i].name == condition.rhsAttr) {
+            rightConditoinAttr = attrs[i];
+            rightConditionPos = i;
+        }
+
     }
 }
 
 RC Filter::getNextTuple(void *data) {
-    // here we can use in and cond to do stuff
-    if (dynamic_cast<TableScan*>(in)) {
-        if (static_cast<TableScan*>(in)->getNextTuple(data) == -1) {
-            return -1;
+    // loop until a tuple is found that satisfies the condition
+    vector<Attribute> attrs;
+    in->getAttributes(attrs);
+
+    int offset = 1;
+
+    void* leftValue = malloc(PAGE_SIZE);
+    void* rightValue = malloc(PAGE_SIZE);
+
+    while (in->getNextTuple(data) != -1) {
+        // search for condition value
+        for (int i = 0; i <  attrs.size(); i++) {
+            // TODO Handle Nulls
+            // we are at the position, test its value
+            if (leftConditionPos == i) {
+                memcpy((char*)leftValue, data + offset, sizeof(int));
+            }
+
+            if (filterCondition.bRhsIsAttr && rightConditionPos == i) {
+                memcpy((char*)rightValue, data + offset, sizeof(int));
+            }
+
+            // skip over the attribute
+            switch (attrs[i].type) {
+                case TypeInt:
+                    offset += sizeof(int);
+                    break;
+                case TypeReal:
+                    offset += sizeof(float);
+                    break;
+                case TypeVarChar:
+                    int length;
+                    memcpy(&length, (char*)data + offset, sizeof(int));
+                    offset += sizeof(int) + length;
+                    break;
+                }
         }
-    } else if (dynamic_cast<IndexScan*>(in)) {
-        if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
-            return -1;
+
+        if ((filterCondition.bRhsIsAttr && compareValues(leftValue, rightValue))
+            || compareValues(leftValue, filterCondition.rhsValue.data)){
+            return 0;
         }
-    } else if (dynamic_cast<BNLJoin*>(in)) {
-        if (static_cast<BNLJoin*>(in)->getNextTuple(data) == -1) {
-            return -1;
-        }
-    } else if (dynamic_cast<INLJoin*>(in)) {
-        if (static_cast<INLJoin*>(in)->getNextTuple(data) == -1) {
-            return -1;
-        }
+
+        // reset offset
+        offset = 1;
     }
+
+    // if it reached this point, we have reached the end of the tuples
+    return -1;
+}
+
+bool Filter::compareValues(void *left, void* right) {
+    switch (leftConditionAttr.type) {
+    case TypeInt:
+        int leftInt;
+        memcpy(&leftInt, (char *) left, sizeof(int));
+
+        int rightInt;
+        memcpy(&rightInt, (char *) right, sizeof(int));
+
+        switch(filterCondition.op) {
+            case EQ_OP:     return leftInt == rightInt;
+            case LT_OP:     return leftInt < rightInt;
+            case GT_OP:     return leftInt > rightInt;
+            case LE_OP:     return leftInt <= rightInt;
+            case GE_OP:     return leftInt >= rightInt;
+            case NE_OP:     return leftInt != rightInt;
+            case NO_OP:     return true;
+            default:        return false;
+        }
+        break;
+    case TypeReal:
+        float leftReal;
+        memcpy(&leftReal, (char *) left, sizeof(float));
+
+        float rightReal;
+        memcpy(&rightReal, (char *) right, sizeof(float));
+
+        switch(filterCondition.op) {
+            case EQ_OP:     return leftReal == rightReal;
+            case LT_OP:     return leftReal < rightReal;
+            case GT_OP:     return leftReal > rightReal;
+            case LE_OP:     return leftReal <= rightReal;
+            case GE_OP:     return leftReal >= rightReal;
+            case NE_OP:     return leftReal != rightReal;
+            case NO_OP:     return true;
+            default:        return false;
+        }
+
+        break;
+    case TypeVarChar:
+        int leftLength;
+        memcpy(&leftLength, (char *) left, sizeof(int));
+        char* leftVal = new char[leftLength + 1];
+        memcpy(leftVal, (char *) left + sizeof(int), leftLength);
+        leftVal[leftLength] = '\0';
+        string leftVarChar = std::string(leftVal);
+
+        int rightLength;
+        memcpy(&rightLength, (char *) right, sizeof(int));
+        char* rightVal = new char[rightLength + 1];
+        memcpy(rightVal, (char *) right + sizeof(int), rightLength);
+        rightVal[rightLength] = '\0';
+        string rightVarChar = std::string(rightVal);
+
+        switch(filterCondition.op) {
+            case EQ_OP:     return leftVarChar == rightVarChar;
+            case LT_OP:     return leftVarChar < rightVarChar;
+            case GT_OP:     return leftVarChar > rightVarChar;
+            case LE_OP:     return leftVarChar <= rightVarChar;
+            case GE_OP:     return leftVarChar >= rightVarChar;
+            case NE_OP:     return leftVarChar != rightVarChar;
+            case NO_OP:     return true;
+            default:        return false;
+        }
+
+        break;
+    }
+
+    return 0;
 }
 
 Project::Project(Iterator* input, const vector<string> &attrNames) {
