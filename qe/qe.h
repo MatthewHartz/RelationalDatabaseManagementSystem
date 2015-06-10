@@ -11,7 +11,36 @@
 
 using namespace std;
 
+// int triplet
+struct intMapEntry
+{
+    int attr;
+    void *buffer;
+    int size;
+};
+
+// real triplet
+struct realMapEntry
+{
+    float attr;
+    void *buffer;
+    int size;
+};
+
+// varChar triplet
+struct varCharMapEntry
+{
+    string attr;
+    void *buffer;
+    int size;
+};
+
+// typedefs
 typedef enum{ COUNT=0, SUM, AVG, MIN, MAX } AggregateOp;
+
+typedef unordered_map<int, vector<intMapEntry>> intMap;
+typedef unordered_map<float, vector<realMapEntry>> realMap;
+typedef unordered_map<string, vector<varCharMapEntry>> varCharMap;
 
 // The following functions use the following
 // format for the passed data.
@@ -243,6 +272,8 @@ class BNLJoin : public Iterator {
         void setRightIterator(TableScan *input) { rightIn = input; };
         void setLeftJoinAttribute(Attribute attribute) { leftJoinAttribute = attribute; };
         void setRightJoinAttribute(Attribute attribute) { rightJoinAttribute = attribute; };
+        void setLeftNumAttrs(int num) { leftNumAttrs = num; };
+        void setRightNumAttrs(int num) { rightNumAttrs = num; };
         void setNumRecords(int num) { numRecords = num; };
 
         // getters
@@ -250,25 +281,27 @@ class BNLJoin : public Iterator {
         TableScan* getRightIterator(void) { return rightIn; };
         Attribute getLeftJoinAttribute(void) { return leftJoinAttribute; };
         Attribute getRightJoinAttribute(void) { return rightJoinAttribute; };
+        int getLeftNumAttrs(void) { return leftNumAttrs; };
+        int getRightNumAttrs(void) { return rightNumAttrs; };
         int getNumRecords(void) { return numRecords; };
-        unordered_map<int, vector<void*>> getIntMap(void) { return intMap; };
-        unordered_map<int, vector<void*>> getRealMap(void) { return realMap; };
-        unordered_map<int, vector<void*>> getVarCharMap(void) { return varCharMap; };
 
     private:
         Iterator *leftIn;
         TableScan *rightIn;
         Attribute leftJoinAttribute;
         Attribute rightJoinAttribute;
+        int leftNumAttrs;
+        int rightNumAttrs;
         int numRecords;
         bool innerFinished = true; // This variable lets the right outer loop know it needs to refresh the map
-        unordered_map<int, vector<void*>> intMap = new unordered_map<int, vector<void*>>();
-        unordered_map<int, vector<void*>> realMap = new unordered_map<int, vector<void*>>();
-        unordered_map<int, vector<void*>> varCharMap = new unordered_map<int, vector<void*>>();
+        intMap intHashMap;
+        realMap realHashMap;
+        varCharMap varCharHashMap;
 
+        // these might be unnecessary
         int intHashFunction(int data, int numRecords);
-        int intHashFunction(float data, int numRecords);
-        int intHashFunction(string data, int numRecords);
+        int realHashFunction(float data, int numRecords);
+        int varCharHashFunction(string data, int numRecords);
 };
 
 
