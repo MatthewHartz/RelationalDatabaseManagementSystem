@@ -222,89 +222,182 @@ Aggregate::Aggregate(Iterator *input,          // Iterator of input R
     setAttribute(aggAttr);
     setOperator(op);
     setValue(0);
-
-    // initialize return attribute
-    vector<string> returnAttrs;
-    returnAttrs.push_back(aggAttr.name);
-
-    Value v;
-
-    aggAttr.name.erase(0, aggAttr.name.find(".") + 1);
-    if (dynamic_cast<TableScan*>(input)) {
-        static_cast<TableScan*>(input)->setIterator(NO_OP, "", returnAttrs, v);
-    } else {
-       // static_cast<IndeScan*>(in)->set
-
-    }
 };
 
+// Aggregate getNextTuple will only collect reals and ints (NO VARCHARS)
 RC Aggregate::getNextTuple(void *data) {
-    AggregateOp op = getOperator();
     void *buffer = malloc(PAGE_SIZE);
-    float value;
     int counter = 0; // used for AVG
+    float aggregateValue = 0;
+    int intTemp;
+    float floatTemp;
+    bool aggregateFound = false;
 
     // aggregate values
-    switch (op) {
+    vector<Attribute> attrs;
+    getAttributes(attrs);
+    int offset = 1;
+
+    // loop over all tuples and aggregate the aggregate operator
+    switch (getOperator()) {
         case MAX:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                int temp;
-                memcpy(&temp, buffer, sizeof(float));
+                aggregateFound = true;
+                // iterate over the attributes and find the aggregate attribute
+                for (Attribute attr: attrs) {
+                    if (attr.name == getAttribute().name) {
+                        switch (getAttribute().type) {
+                            case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                                if (intTemp > aggregateValue) {
+                                    aggregateValue = (float)intTemp;
+                                }
+                                break;
+                            case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                                if (floatTemp > aggregateValue) {
+                                    aggregateValue = floatTemp;
+                                }
+                                break;
+                            }
+                    }
 
-                if (!value) {
-                    value = temp;
-                } else if (temp > value) {
-                    value = temp;
+                    switch (getAttribute().type) {
+                        case TypeInt: offset += sizeof(int);
+                            break;
+                        case TypeReal: offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int len;
+                            memcpy(&len, (char*)buffer + offset, sizeof(int));
+                            offset += sizeof(int) + len;
+                            break;
+                    }
                 }
+
+                // reset offset
+                offset = 1;
             }
             break;
         case MIN:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                int temp;
-                memcpy(&temp, buffer, sizeof(float));
+                aggregateFound = true;
+                // iterate over the attributes and find the aggregate attribute
+                for (Attribute attr: attrs) {
+                    if (attr.name == getAttribute().name) {
+                        switch (getAttribute().type) {
+                            case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                                if (intTemp < aggregateValue) {
+                                    aggregateValue = (float)intTemp;
+                                }
+                                break;
+                            case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                                if (floatTemp < aggregateValue) {
+                                    aggregateValue = floatTemp;
+                                }
+                                break;
+                            }
+                    }
 
-                if (!value) {
-                    value = temp;
-                } else if (temp < value) {
-                    value = temp;
+                    switch (getAttribute().type) {
+                        case TypeInt: offset += sizeof(int);
+                            break;
+                        case TypeReal: offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int len;
+                            memcpy(&len, (char*)buffer + offset, sizeof(int));
+                            offset += sizeof(int) + len;
+                            break;
+                    }
                 }
+
+                // reset offset
+                offset = 1;
             }
             break;
         case SUM:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                int temp;
-                memcpy(&temp, buffer, sizeof(float));
+                aggregateFound = true;
+                // iterate over the attributes and find the aggregate attribute
+                for (Attribute attr: attrs) {
+                    if (attr.name == getAttribute().name) {
+                        switch (getAttribute().type) {
+                            case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                                aggregateValue += (float)intTemp;
+                                break;
+                            case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                                aggregateValue += floatTemp;
+                                break;
+                            }
+                    }
 
-                if (!value) {
-                    value = temp;
-                } else {
-                    value += temp;
+                    switch (getAttribute().type) {
+                        case TypeInt: offset += sizeof(int);
+                            break;
+                        case TypeReal: offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int len;
+                            memcpy(&len, (char*)buffer + offset, sizeof(int));
+                            offset += sizeof(int) + len;
+                            break;
+                    }
                 }
+
+                // reset offset
+                offset = 1;
             }
             break;
         case AVG:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                int temp;
-                counter++;
-                memcpy(&temp, buffer, sizeof(float));
+                aggregateFound = true;
+                // iterate over the attributes and find the aggregate attribute
+                for (Attribute attr: attrs) {
+                    if (attr.name == getAttribute().name) {
+                        switch (getAttribute().type) {
+                        case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                            aggregateValue += (float)intTemp;
+                            break;
+                        case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                            aggregateValue += floatTemp;
+                            break;
+                        }
+                    }
 
-                if (!value) {
-                    value = temp;
-                } else {
-                    value += temp;
+                    switch (getAttribute().type) {
+                        case TypeInt: offset += sizeof(int);
+                            break;
+                        case TypeReal: offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int len;
+                            memcpy(&len, (char*)buffer + offset, sizeof(int));
+                            offset += sizeof(int) + len;
+                            break;
+                    }
                 }
 
-                // TODO: return value / counter
+                // reset offset
+                offset = 1;
+                counter++;
             }
             break;
         case COUNT:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                value++;
+                aggregateValue++;
             }
             break;
         default:
             return -1;
     }
+
+    if (!aggregateFound) {
+        return -1;
+    }
+
+    // set aggregate value for data
+    if (getOperator() == AVG) aggregateValue = aggregateValue / (float) counter;
+    memcpy((char*)data + 1, &aggregateValue, sizeof(float));
+    return 0;
 }
 
 void Aggregate::getAttributes(vector<Attribute> &attrs) const {
