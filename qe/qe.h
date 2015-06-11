@@ -251,11 +251,20 @@ class Project : public Iterator {
 
         RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const { iterator->getAttributes(attrs); };
+
+        // setters
+        void setIterator(Iterator* iter) { iterator = iter; };
+        void setAttributeNames(vector<string> attrs) { attributeNames = attrs; };
+
+        // getters
+        Iterator *getIterator(void) { return iterator; };
+        vector<string> getAttributeNames(void) { return attributeNames; };
+
 
     private:
-        Iterator *in;
-        vector<string> attrs;
+        Iterator *iterator;
+        vector<string> attributeNames;
 };
 
 // Optional for the undergraduate solo teams. 5 extra-credit points

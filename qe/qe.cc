@@ -31,7 +31,10 @@ RC Filter::getNextTuple(void *data) {
     vector<Attribute> attrs;
     in->getAttributes(attrs);
 
-    int offset = 1;
+    // null indicator information
+    int attributeCount = attrs.size();
+    int indicatorSize = 1 + ((attributeCount - 1) / 8);
+    int offset = indicatorSize;
 
     void* leftValue = malloc(PAGE_SIZE);
     void* rightValue = malloc(PAGE_SIZE);
@@ -86,7 +89,7 @@ RC Filter::getNextTuple(void *data) {
         }
 
         // reset offset
-        offset = 1;
+        offset = indicatorSize;
     }
 
     // if it reached this point, we have reached the end of the tuples
@@ -165,55 +168,129 @@ bool Filter::compareValues(void *left, void* right) {
 }
 
 Project::Project(Iterator* input, const vector<string> &attrNames) {
-    in = input;
-    attrs = attrNames;
-    Value v;
-    v.data = NULL;
-
-    // Conver to vector of strings
-    vector<string> returnAttrs;
-    unsigned i;
-    for(i = 0; i < attrs.size(); ++i)
-    {
-        attrs.at(i).erase(0, attrs.at(i).find(".") + 1);
-    }
-
-    if (dynamic_cast<TableScan*>(in)) {
-        static_cast<TableScan*>(in)->setIterator(NO_OP, "", attrs, v);
-    } else if (dynamic_cast<IndexScan*>(in)) {
-       // static_cast<IndeScan*>(in)->set
-    } else if (dynamic_cast<BNLJoin*>(in)) {
-
-    } else if (dynamic_cast<INLJoin*>(in)) {
-
-    }
+    setIterator(input);
+    setAttributeNames(attrNames);
 }
 
-// ... the rest of your implementations go here
 RC Project::getNextTuple(void *data) {
-    // here we can use in and cond to do stuff
-    if (dynamic_cast<TableScan*>(in)) {
-        if (static_cast<TableScan*>(in)->getNextTuple(data) == -1) {
-            return -1;
-        }
-    } else if (dynamic_cast<IndexScan*>(in)) {
-        if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
-            return -1;
-        }
-    } else if (dynamic_cast<BNLJoin*>(in)) {
-        if (static_cast<IndexScan*>(in)->getNextTuple(data) == -1) {
-            return -1;
-        }
-    } else if (dynamic_cast<INLJoin*>(in)) {
-        if (static_cast<INLJoin*>(in)->getNextTuple(data) == -1) {
-            return -1;
-        }
+    // Attrs that will be projected
+    vector<Attribute> projectAttrs;
+    getAttributes(projectAttrs);
+
+    // get tables actual indicator size
+    vector<Attribute> tableAttrs;
+    getIterator()->getAttributes(tableAttrs);
+    int tableIndicatorSize = 1 + ((tableAttrs.size()- 1) / 8);
+
+    int attributeCount = projectAttrs.size();
+    vector<string> attrNames = getAttributeNames();
+
+    // create a new null indicator for merged entries
+    int indicatorSize = 1 + ((attributeCount - 1) / 8);
+    unsigned char *nullsIndicator = (unsigned char *) malloc(indicatorSize);
+    memset(nullsIndicator, 0, indicatorSize);
+
+    // iterate over attrs searching for projected attributes and collect attribute
+    // and modify nullsIndicator
+    int offset = indicatorSize;
+    int dataOffset = tableIndicatorSize;
+
+    // read the next tuple
+    void *buffer = malloc(PAGE_SIZE);
+    if (getIterator()->getNextTuple(buffer) == -1) {
+        free(buffer);
+        free(nullsIndicator);
+        return -1;
     }
+
+    // TODO OPTIMIZE THIS ALGO
+    int tableCounter = 0;
+    int counter = 0;
+
+    for (Attribute attr: projectAttrs) {
+        // test if null
+        char attrByte;
+        memcpy(&attrByte, (char*) buffer + (tableCounter / 8), sizeof(char));
+        char mask = 128 >> (tableCounter % 8);
+
+        // if attribute is null
+        if (attrByte & mask > 0) {
+            // get the byte that contains the byte for the nullsIndicator position of attr
+            char tempByte;
+            memcpy(&tempByte, (char*) nullsIndicator + (counter / 8), sizeof(char));
+
+            // Modify that byte
+            char tempMask = 128 >> (counter & 8);
+            tempByte |= tempMask;
+
+            // write it back to nullsIndicator
+            memcpy((char*) nullsIndicator + (counter / 8), &tempByte, sizeof(char));
+
+            counter++;
+            tableCounter++;
+            continue;
+        }
+
+        // otherwise, collect data
+        switch(attr.type) {
+            case TypeInt: {
+                if (std::find(attrNames.begin(), attrNames.end(), attr.name) != attrNames.end()) {
+                    // Write data
+                    memcpy((char*)data + dataOffset, (char*)buffer + offset, sizeof(int));
+
+                    dataOffset += sizeof(int);
+                    counter++;
+                }
+
+                offset += sizeof(int);
+                break;
+            }
+            case TypeReal: {
+                if (std::find(attrNames.begin(), attrNames.end(), attr.name) != attrNames.end()) {
+                    // TODO determine if null
+
+                    // Write data
+                    memcpy((char*)data + dataOffset, (char*)buffer + offset, sizeof(float));
+
+                    dataOffset += sizeof(float);
+                    counter++;
+                }
+
+                offset += sizeof(float);
+                break;
+            }
+            case TypeVarChar: {
+                int len;
+                memcpy(&len, (char*)data + offset, sizeof(int));
+                if (std::find(attrNames.begin(), attrNames.end(), attr.name) != attrNames.end()) {
+                    // TODO determine if null
+
+                    // Write data
+                    memcpy((char*)data + dataOffset, &len, sizeof(int));
+                    dataOffset += sizeof(int);
+                    offset += sizeof(int);
+                    memcpy((char*)data + dataOffset, (char*)buffer + offset, len);
+
+                    dataOffset += len;
+                    counter++;
+                }
+
+                offset += len;
+                break;
+            }
+        }
+
+        tableCounter++;
+    }
+
+    // write the null indicator
+    memcpy((char*) data, (char*) nullsIndicator, indicatorSize);
+
+    // free memory
+    free(nullsIndicator);
+    free(buffer);
 }
 
-/*
- * Aggregate section
- */
 Aggregate::Aggregate(Iterator *input,          // Iterator of input R
                   Attribute aggAttr,        // The attribute over which we are computing an aggregate
                   AggregateOp op            // Aggregate operation
@@ -236,7 +313,11 @@ RC Aggregate::getNextTuple(void *data) {
     // aggregate values
     vector<Attribute> attrs;
     getAttributes(attrs);
-    int offset = 1;
+
+    // null indicator information
+    int attributeCount = attrs.size();
+    int indicatorSize = 1 + ((attributeCount - 1) / 8);
+    int offset = indicatorSize;
 
     // loop over all tuples and aggregate the aggregate operator
     switch (getOperator()) {
@@ -274,7 +355,7 @@ RC Aggregate::getNextTuple(void *data) {
                 }
 
                 // reset offset
-                offset = 1;
+                offset = indicatorSize;
             }
             break;
         case MIN:
@@ -311,7 +392,7 @@ RC Aggregate::getNextTuple(void *data) {
                 }
 
                 // reset offset
-                offset = 1;
+                offset = indicatorSize;
             }
             break;
         case SUM:
@@ -344,7 +425,7 @@ RC Aggregate::getNextTuple(void *data) {
                 }
 
                 // reset offset
-                offset = 1;
+                offset = indicatorSize;
             }
             break;
         case AVG:
@@ -377,7 +458,7 @@ RC Aggregate::getNextTuple(void *data) {
                 }
 
                 // reset offset
-                offset = 1;
+                offset = indicatorSize;
                 counter++;
             }
             break;
@@ -404,9 +485,6 @@ void Aggregate::getAttributes(vector<Attribute> &attrs) const {
     return aggregateIterator->getAttributes(attrs);
 }
 
-/*
- * Block Nested Loop Join section
- */
 BNLJoin::BNLJoin(Iterator *leftIn,            // Iterator of input R
         TableScan *rightIn,           // TableScan Iterator of input S
         const Condition &condition,   // Join condition
