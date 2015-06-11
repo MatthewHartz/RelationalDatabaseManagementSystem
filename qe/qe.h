@@ -386,7 +386,7 @@ class Aggregate : public Iterator {
                   Attribute aggAttr,           // The attribute over which we are computing an aggregate
                   Attribute groupAttr,         // The attribute over which we are grouping the tuples
                   AggregateOp op              // Aggregate operation
-        ){};
+        );
         ~Aggregate(){};
 
         RC getNextTuple(void *data);
@@ -398,20 +398,28 @@ class Aggregate : public Iterator {
         // setters
         void setIterator(Iterator *input) { aggregateIterator = input; };
         void setAttribute(Attribute attr) { aggregateAttr = attr; };
+        void setGroupAttribute(Attribute attr) { groupAttr = attr; };
         void setOperator(AggregateOp op) { aggregateOp = op; };
         void setValue(float value) { aggregateValue = value; };
 
         // getters
         Iterator* getIterator(void) { return aggregateIterator; };
         Attribute getAttribute(void) { return aggregateAttr; };
+        Attribute getGroupAttribute(void) { return groupAttr; };
         AggregateOp getOperator(void) { return aggregateOp; };
         float getValue(void) { return aggregateValue; };
 
     private:
         Iterator *aggregateIterator;
         Attribute aggregateAttr;
+        Attribute groupAttr;
         AggregateOp aggregateOp;
         float aggregateValue; // This is the value that is returned from aggregate ie MAX,MIN,COUNT,AVG,SUM
+
+        // for group based aggregations
+        intMap intHashMap;
+        realMap realHashMap;
+        varCharMap varCharHashMap;
 };
 
 #endif

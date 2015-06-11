@@ -301,7 +301,20 @@ Aggregate::Aggregate(Iterator *input,          // Iterator of input R
     setValue(0);
 };
 
+Aggregate::Aggregate(Iterator *input,          // Iterator of input R
+                  Attribute aggAttr,        // The attribute over which we are computing an aggregate
+                  Attribute groupAttr,
+                  AggregateOp op            // Aggregate operation
+        ) {
+    setIterator(input);
+    setAttribute(aggAttr);
+    setGroupAttribute(groupAttr);
+    setOperator(op);
+    setValue(0);
+};
+
 // Aggregate getNextTuple will only collect reals and ints (NO VARCHARS)
+// Group based aggregation can be assumed to fit on disk, no need to worry about storing partitions
 RC Aggregate::getNextTuple(void *data) {
     void *buffer = malloc(PAGE_SIZE);
     int counter = 0; // used for AVG
@@ -464,7 +477,12 @@ RC Aggregate::getNextTuple(void *data) {
             break;
         case COUNT:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                aggregateValue++;
+                Attribute groupAttr = getGroupAttribute();
+                if (groupAttr == NULL) {
+                    aggregateValue++;
+                } else {
+
+                }
             }
             break;
         default:
