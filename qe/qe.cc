@@ -478,11 +478,11 @@ RC Aggregate::getNextTuple(void *data) {
         case COUNT:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
                 Attribute groupAttr = getGroupAttribute();
-                if (groupAttr == NULL) {
-                    aggregateValue++;
-                } else {
-
-                }
+//                if (groupAttr == NULL) {
+//                    aggregateValue++;
+//                } else {
+//
+//                }
             }
             break;
         default:
@@ -597,6 +597,7 @@ RC BNLJoin::getNextTuple(void *data) {
                     bufferSize = offset;
                     void *entryBuffer = malloc(bufferSize);
                     memcpy(entryBuffer, buffer, bufferSize);
+
                     // store into map
                     //int hash = intHashFunction(returnInt, numRecords);
 
@@ -823,7 +824,8 @@ RC BNLJoin::getNextTuple(void *data) {
                     // iterate over list and attempt to find key
                     for (intMapEntry entry : hashVal->second) {
                         if (entry.attr == returnInt) {
-                            joinBufferData(entry.buffer, entry.size, rightBuffer, bufferSize, data);
+                            joinBufferData(entry.buffer, entry.size, getLeftNumAttrs(), rightBuffer
+                                    , bufferSize, getRightNumAttrs(), data);
                             free(rightBuffer);
                             return 0;
                         }
@@ -878,7 +880,8 @@ RC BNLJoin::getNextTuple(void *data) {
                     // iterate over list and attempt to find key
                     for (realMapEntry entry : hashVal->second) {
                         if (entry.attr == returnReal) {
-                            joinBufferData(entry.buffer, entry.size, rightBuffer, bufferSize, data);
+                            joinBufferData(entry.buffer, entry.size, getLeftNumAttrs(), rightBuffer
+                                    , bufferSize, getRightNumAttrs(), data);
                             free(rightBuffer);
                             return 0;
                         }
@@ -903,7 +906,7 @@ RC BNLJoin::getNextTuple(void *data) {
                     if (!RecordBasedFileManager::isFieldNull(rightBuffer, i)) {
                         if (attrs[i].name == getRightJoinAttribute().name) {
                             int length;
-                            int loffset = 1;
+                            int loffset = offset;
                             memcpy(&length, (char*)rightBuffer + loffset, sizeof(int));
                             loffset += sizeof(int);
                             char* value = new char[length + 1];
@@ -912,7 +915,7 @@ RC BNLJoin::getNextTuple(void *data) {
                             value[length] = '\0';
                             returnVarChar = std::string(value);
 
-                            memcpy(&returnVarChar, (char*)rightBuffer + offset, sizeof(int));
+                            memcpy(&returnVarChar, (char*)rightBuffer + offset, length);
                         }
 
                         // skip over the attribute
@@ -943,7 +946,8 @@ RC BNLJoin::getNextTuple(void *data) {
                     // iterate over list and attempt to find key
                     for (varCharMapEntry entry : hashVal->second) {
                         if (entry.attr == returnVarChar) {
-                            joinBufferData(entry.buffer, entry.size, rightBuffer, bufferSize, data);
+                            joinBufferData(entry.buffer, entry.size, getLeftNumAttrs(), rightBuffer
+                                    , bufferSize, getRightNumAttrs(), data);
                             free(rightBuffer);
                             return 0;
                         }
@@ -983,13 +987,201 @@ void BNLJoin::getAttributes(vector<Attribute> &attrs) const {
     attrs.insert( attrs.end(), rightAttrs.begin(), rightAttrs.end());
 }
 
-RC BNLJoin::joinBufferData(void *buffer1, int buffer1Len, void* buffer2, int buffer2Len, void* data) {
+int BNLJoin::intHashFunction(int data, int numRecords) {
+    return data % numRecords;
+}
+
+int BNLJoin::realHashFunction(float data, int numRecords) {
+    unsigned int ui;
+    memcpy(&ui, &data, sizeof(float));
+    return ui & 0xfffff000;
+}
+
+int BNLJoin::varCharHashFunction(string data, int numRecords) {
+    int length = data.size();
+    char c[length + 1];
+    strcpy(c, data.c_str());
+
+
+    int sum = 0;
+    for (int i = 0; i < length; i++) {
+        sum += c[i];
+    }
+
+    return sum % numRecords;
+}
+
+INLJoin::INLJoin(Iterator *leftIn,           // Iterator of input R
+               IndexScan *rightIn,          // IndexScan Iterator of input S
+               const Condition &condition) {  // Join condition
+    setLeftIterator(leftIn);
+    setRightIterator(rightIn);
+
+    string attr = condition.bRhsIsAttr ? condition.rhsAttr : condition.lhsAttr;
+
+    // initializes all the left return attributes
+    vector<Attribute> leftAttrs;
+    getLeftIterator()->getAttributes(leftAttrs);
+
+    // initializes all the right return attributes
+    vector<Attribute> rightAttrs;
+    getRightIterator()->getAttributes(rightAttrs);
+
+    // get the left join attribute
+    for (int i = 0; i < leftAttrs.size(); i++) {
+        if (leftAttrs[i].name == condition.lhsAttr) {
+            setLeftJoinAttribute(leftAttrs[i]);
+        }
+    }
+
+    // get the right join attribute
+    for (int i = 0; i < rightAttrs.size(); i++) {
+        if (rightAttrs[i].name == condition.rhsAttr) {
+            setRightJoinAttribute(rightAttrs[i]);
+        }
+    }
+
+    // set attrs lengths
+    setLeftNumAttrs(leftAttrs.size());
+    setRightNumAttrs(rightAttrs.size());
+}
+
+// TODO Set nulls in null indicator
+RC INLJoin::getNextTuple(void *data) {
+    void *leftBuffer = malloc(PAGE_SIZE);
+    void *rightBuffer = malloc(PAGE_SIZE);
+    int leftBufferSize = 0;
+    int rightBufferSize = 0;
+    vector<Attribute> leftAttrs;
+    vector<Attribute> rightAttrs;
+
+    // set the vectors
+    getLeftIterator()->getAttributes(leftAttrs);
+    getRightIterator()->getAttributes(rightAttrs);
+
+    int offset = 0;
+    void *joinValue;
+
+    // loop over left join attribute
+    while (getLeftIterator()->getNextTuple(leftBuffer) != -1) {
+        // adjust for nullindicator size using ceiling function
+        offset = 1 + ((leftAttrs.size() - 1) / 8);
+
+        // collect left join value
+        for (unsigned i = 0; i < leftAttrs.size(); i++) {
+            if (!RecordBasedFileManager::isFieldNull(leftBuffer, i)) {
+                if (leftAttrs[i].name == getLeftJoinAttribute().name) {
+                    switch (getLeftJoinAttribute().type) {
+                    case TypeInt:
+                        joinValue = malloc(sizeof(float));
+                        memcpy((char*)joinValue, (char*)leftBuffer + offset, sizeof(int));
+                        break;
+                    case TypeReal:
+                        joinValue = malloc(sizeof(float));
+                        memcpy((char*)joinValue, (char*)leftBuffer + offset, sizeof(float));
+                        break;
+                    case TypeVarChar:
+                        int length;
+                        memcpy(&length, (char*)leftBuffer + offset, sizeof(int));
+                        memcpy((char*)joinValue, (char*)leftBuffer + offset, length + sizeof(int));
+                        break;
+                    }
+                }
+
+                // skip over the attribute
+                switch (leftAttrs[i].type) {
+                case TypeInt:
+                    offset += sizeof(int);
+                    break;
+                case TypeReal:
+                    offset += sizeof(float);
+                    break;
+                case TypeVarChar:
+                    int length;
+                    memcpy(&length, (char*)leftBuffer + offset, sizeof(int));
+                    offset += sizeof(int) + length;
+                    break;
+                }
+            }
+        }
+
+        // set left buffer size and reset offset
+        leftBufferSize = offset;
+        offset = 0;
+
+        if (joinValue != NULL) {
+            // adjust for nullindicator size using ceiling function
+            offset = 1 + ((rightAttrs.size() - 1) / 8);
+
+            // set the indexScan to iterate where key value == joinValue
+            getRightIterator()->setIterator(joinValue, joinValue, true, true);
+
+            // search for tuple
+            while (getRightIterator()->getNextTuple(rightBuffer) != -1) {
+                // tuple found, now determine size of buffer
+                for (unsigned i = 0; i < rightAttrs.size(); i++) {
+                    if (!RecordBasedFileManager::isFieldNull(rightBuffer, i)) {
+                        // skip over the attribute
+                        switch (rightAttrs[i].type) {
+                        case TypeInt:
+                            offset += sizeof(int);
+                            break;
+                        case TypeReal:
+                            offset += sizeof(float);
+                            break;
+                        case TypeVarChar:
+                            int length;
+                            memcpy(&length, (char*)rightBuffer + offset, sizeof(int));
+                            offset += sizeof(int) + length;
+                            break;
+                        }
+                    }
+                }
+
+                // set right buffer size and reset offset
+                rightBufferSize = offset;
+                offset = 0;
+
+                joinBufferData(leftBuffer, leftBufferSize, leftAttrs.size(), rightBuffer
+                        , rightBufferSize, rightAttrs.size(), data);
+
+                // free memory
+                free(leftBuffer);
+                free(rightBuffer);
+                free(joinValue);
+
+                return 0;
+            }
+        }
+
+        // reset all sizes and offset
+        leftBufferSize = 0;
+        rightBufferSize = 0;
+        offset = 0;
+    }
+
+    // joined tuple was not found
+    free(leftBuffer);
+    free(rightBuffer);
+    return -1;
+}
+
+void INLJoin::getAttributes(vector<Attribute> &attrs) const {
+    vector<Attribute> leftAttrs;
+    getLeftIterator()->getAttributes(leftAttrs);
+    vector<Attribute> rightAttrs;
+    getRightIterator()->getAttributes(rightAttrs);
+
+    attrs.reserve( leftAttrs.size() + rightAttrs.size());
+    attrs.insert( attrs.end(), leftAttrs.begin(), leftAttrs.end());
+    attrs.insert( attrs.end(), rightAttrs.begin(), rightAttrs.end());
+}
+
+RC joinBufferData(void *buffer1, int buffer1Len, int numAttrs1, void* buffer2, int buffer2Len, int numAttrs2, void* data) {
     // create a new null indicator for merged entries
-    int leftAttrsCount = getLeftNumAttrs();
-    int rightAttrsCount = getRightNumAttrs();
-    int leftIndicatorSize = 1 + (( leftAttrsCount - 1) / 8);
-    int rightIndicatorSize = 1 + (( rightAttrsCount - 1) / 8);
-    int indicatorSize = 1 + (((leftAttrsCount + rightAttrsCount) - 1) / 8);
+    int leftIndicatorSize = 1 + (( numAttrs1 - 1) / 8);
+    int rightIndicatorSize = 1 + (( numAttrs2 - 1) / 8);
+    int indicatorSize = 1 + (((numAttrs1 + numAttrs2) - 1) / 8);
 
     unsigned char *nullsIndicator = (unsigned char *) malloc(indicatorSize);
     memset(nullsIndicator, 0, indicatorSize);
@@ -999,15 +1191,15 @@ RC BNLJoin::joinBufferData(void *buffer1, int buffer1Len, void* buffer2, int buf
     memcpy((char*)nullsIndicator, buffer1, leftIndicatorSize);
 
     // iterate over all bits for rightAttrs, then merge them into nullsIndicator
-    int position = leftAttrsCount;
-    for (int i = 0; i < rightAttrsCount; i++) {
+    int position = numAttrs1;
+    for (int i = 0; i < numAttrs2; i++) {
         // read the fragmented byte
         char currentByte;
         memcpy(&currentByte, nullsIndicator + (leftIndicatorSize - 1), sizeof(char));
 
         // add in the remaining bits using the right indicator
         char rightByte;
-        for (int j = position % 8; j < 8 && i < rightAttrsCount; i++, j++, position++) {
+        for (int j = position % 8; j < 8 && i < numAttrs2; i++, j++, position++) {
             //char mask = 128 >> j;
             //currentByte |= mask;
 
@@ -1035,35 +1227,6 @@ RC BNLJoin::joinBufferData(void *buffer1, int buffer1Len, void* buffer2, int buf
     offset += buffer1Len - leftIndicatorSize;
     memcpy((char*)data + offset, (char*)buffer2 + rightIndicatorSize, buffer2Len - rightIndicatorSize);
 
+    free(nullsIndicator);
     return 0;
 }
-
-int BNLJoin::intHashFunction(int data, int numRecords) {
-    return data % numRecords;
-}
-
-int BNLJoin::realHashFunction(float data, int numRecords) {
-    unsigned int ui;
-    memcpy(&ui, &data, sizeof(float));
-    return ui & 0xfffff000;
-}
-
-int BNLJoin::varCharHashFunction(string data, int numRecords) {
-    int length = data.size();
-    char c[length + 1];
-    strcpy(c, data.c_str());
-
-
-    int sum = 0;
-    for (int i = 0; i < length; i++) {
-        sum += c[i];
-    }
-
-    return sum % numRecords;
-}
-
-
-
-
-
-

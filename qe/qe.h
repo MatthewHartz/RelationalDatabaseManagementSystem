@@ -230,7 +230,7 @@ class Filter : public Iterator {
 
         RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const { in->getAttributes(attrs); };
         bool compareValues(void *left, void* right);
     private:
         Iterator *in;
@@ -331,8 +331,6 @@ class BNLJoin : public Iterator {
         realMap realHashMap;
         varCharMap varCharHashMap;
 
-        RC joinBufferData(void *buffer1, int buffer1Len, void* buffer2, int buffer2Len, void* data);
-
         // these might be unnecessary
         int intHashFunction(int data, int numRecords);
         int realHashFunction(float data, int numRecords);
@@ -346,12 +344,38 @@ class INLJoin : public Iterator {
         INLJoin(Iterator *leftIn,           // Iterator of input R
                IndexScan *rightIn,          // IndexScan Iterator of input S
                const Condition &condition   // Join condition
-        ){};
-        ~INLJoin(){};
+        );
+        ~INLJoin() {};
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+
+        // setters
+        void setLeftIterator(Iterator *input) { leftIn = input; };
+        void setRightIterator(IndexScan *input) { rightIn = input; };
+        void setLeftJoinAttribute(Attribute attribute) { leftJoinAttribute = attribute; };
+        void setRightJoinAttribute(Attribute attribute) { rightJoinAttribute = attribute; };
+        void setLeftNumAttrs(int num) { leftNumAttrs = num; };
+        void setRightNumAttrs(int num) { rightNumAttrs = num; };
+
+        // getters
+        Iterator* getLeftIterator(void) const { return leftIn; };
+        IndexScan* getRightIterator(void) const { return rightIn; };
+        Attribute getLeftJoinAttribute(void) const { return leftJoinAttribute; };
+        Attribute getRightJoinAttribute(void) const { return rightJoinAttribute; };
+        int getLeftNumAttrs(void) const { return leftNumAttrs; };
+        int getRightNumAttrs(void) const { return rightNumAttrs; };
+
+    private:
+        Iterator *leftIn;
+        IndexScan *rightIn;
+        Attribute leftJoinAttribute;
+        Attribute rightJoinAttribute;
+        int leftNumAttrs;
+        int rightNumAttrs;
+        int numRecords;
+        bool innerFinished = true; // This variable lets the right outer loop know it needs to refresh the map
 };
 
 // Optional for everyone. 10 extra-credit points
@@ -421,5 +445,13 @@ class Aggregate : public Iterator {
         realMap realHashMap;
         varCharMap varCharHashMap;
 };
+
+static RC joinBufferData(void *buffer1
+        , int buffer1Len
+        , int numAttrs1
+        , void* buffer2
+        , int buffer2Len
+        , int numAttrs2
+        , void* data);
 
 #endif
