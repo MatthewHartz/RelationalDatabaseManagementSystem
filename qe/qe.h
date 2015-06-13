@@ -2,6 +2,7 @@
 #define _qe_h_
 
 #include <vector>
+#include <map>
 
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
@@ -41,6 +42,9 @@ typedef enum{ COUNT=0, SUM, AVG, MIN, MAX } AggregateOp;
 typedef unordered_map<int, vector<intMapEntry>> intMap;
 typedef unordered_map<float, vector<realMapEntry>> realMap;
 typedef unordered_map<string, vector<varCharMapEntry>> varCharMap;
+typedef map<int, float> intAggregateMap;
+typedef map<float, float> realAggregateMap;
+typedef map<string, float> varCharAggregateMap;
 
 // The following functions use the following
 // format for the passed data.
@@ -425,6 +429,7 @@ class Aggregate : public Iterator {
         void setGroupAttribute(Attribute attr) { groupAttr = attr; };
         void setOperator(AggregateOp op) { aggregateOp = op; };
         void setValue(float value) { aggregateValue = value; };
+        void setIsGroupBy() { isGroupBy = true; };
 
         // getters
         Iterator* getIterator(void) { return aggregateIterator; };
@@ -437,6 +442,7 @@ class Aggregate : public Iterator {
         Iterator *aggregateIterator;
         Attribute aggregateAttr;
         Attribute groupAttr;
+        bool isGroupBy = false;
         AggregateOp aggregateOp;
         float aggregateValue; // This is the value that is returned from aggregate ie MAX,MIN,COUNT,AVG,SUM
 
@@ -444,6 +450,9 @@ class Aggregate : public Iterator {
         intMap intHashMap;
         realMap realHashMap;
         varCharMap varCharHashMap;
+        intAggregateMap intAggMap;
+        realAggregateMap realAggMap;
+        varCharAggregateMap varCharAggMap;
 };
 
 static RC joinBufferData(void *buffer1

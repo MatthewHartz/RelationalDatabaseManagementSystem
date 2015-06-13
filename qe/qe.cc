@@ -46,11 +46,11 @@ RC Filter::getNextTuple(void *data) {
             // we are at the position, test its value
             if (leftConditionPos == i) {
                 switch (leftConditionAttr.type) {
-                case TypeInt: memcpy((char*)leftValue, data + offset, sizeof(int));
+                case TypeInt: memcpy((char*)leftValue, (char *) data + offset, sizeof(int));
                     break;
-                case TypeReal: memcpy((char*)leftValue, data + offset, sizeof(float));
+                case TypeReal: memcpy((char*)leftValue, (char *) data + offset, sizeof(float));
                     break;
-                case TypeVarChar: memcpy((char*)leftValue, data + offset, leftConditionAttr.length + sizeof(int));
+                case TypeVarChar: memcpy((char*)leftValue, (char *) data + offset, leftConditionAttr.length + sizeof(int));
                     break;
                 }
 
@@ -58,11 +58,11 @@ RC Filter::getNextTuple(void *data) {
 
             if (filterCondition.bRhsIsAttr && rightConditionPos == i) {
                 switch (rightConditoinAttr.type) {
-                case TypeInt: memcpy((char*)rightValue, data + offset, sizeof(int));
+                case TypeInt: memcpy((char*)rightValue, (char *) data + offset, sizeof(int));
                     break;
-                case TypeReal: memcpy((char*)rightValue, data + offset, sizeof(float));
+                case TypeReal: memcpy((char*)rightValue, (char *) data + offset, sizeof(float));
                     break;
-                case TypeVarChar: memcpy((char*)rightValue, data + offset, rightConditoinAttr.length + sizeof(int));
+                case TypeVarChar: memcpy((char*)rightValue, (char *) data + offset, rightConditoinAttr.length + sizeof(int));
                     break;
                 }
             }
@@ -311,6 +311,7 @@ Aggregate::Aggregate(Iterator *input,          // Iterator of input R
     setGroupAttribute(groupAttr);
     setOperator(op);
     setValue(0);
+    setIsGroupBy();
 };
 
 // Aggregate getNextTuple will only collect reals and ints (NO VARCHARS)
@@ -341,12 +342,12 @@ RC Aggregate::getNextTuple(void *data) {
                 for (Attribute attr: attrs) {
                     if (attr.name == getAttribute().name) {
                         switch (getAttribute().type) {
-                            case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                            case TypeInt: memcpy(&intTemp, (char *) buffer + offset, sizeof(int));
                                 if (intTemp > aggregateValue) {
                                     aggregateValue = (float)intTemp;
                                 }
                                 break;
-                            case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                            case TypeReal: memcpy(&floatTemp, (char *) buffer + offset, sizeof(float));
                                 if (floatTemp > aggregateValue) {
                                     aggregateValue = floatTemp;
                                 }
@@ -378,12 +379,12 @@ RC Aggregate::getNextTuple(void *data) {
                 for (Attribute attr: attrs) {
                     if (attr.name == getAttribute().name) {
                         switch (getAttribute().type) {
-                            case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                            case TypeInt: memcpy(&intTemp, (char *) buffer + offset, sizeof(int));
                                 if (intTemp < aggregateValue) {
                                     aggregateValue = (float)intTemp;
                                 }
                                 break;
-                            case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                            case TypeReal: memcpy(&floatTemp, (char *) buffer + offset, sizeof(float));
                                 if (floatTemp < aggregateValue) {
                                     aggregateValue = floatTemp;
                                 }
@@ -415,10 +416,10 @@ RC Aggregate::getNextTuple(void *data) {
                 for (Attribute attr: attrs) {
                     if (attr.name == getAttribute().name) {
                         switch (getAttribute().type) {
-                            case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
+                            case TypeInt: memcpy(&intTemp, (char *) buffer + offset, sizeof(int));
                                 aggregateValue += (float)intTemp;
                                 break;
-                            case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
+                            case TypeReal: memcpy(&floatTemp, (char *) buffer + offset, sizeof(float));
                                 aggregateValue += floatTemp;
                                 break;
                             }
@@ -442,47 +443,80 @@ RC Aggregate::getNextTuple(void *data) {
             }
             break;
         case AVG:
-            while (getIterator()->getNextTuple(buffer) != RM_EOF) {
-                aggregateFound = true;
-                // iterate over the attributes and find the aggregate attribute
-                for (Attribute attr: attrs) {
-                    if (attr.name == getAttribute().name) {
+            if (!isGroupBy) {
+                while (getIterator()->getNextTuple(buffer) != RM_EOF) {
+                    aggregateFound = true;
+                    // iterate over the attributes and find the aggregate attribute
+                    for (Attribute attr: attrs) {
+                        if (attr.name == getAttribute().name) {
+                            switch (getAttribute().type) {
+                            case TypeInt: memcpy(&intTemp, (char *) buffer + offset, sizeof(int));
+                                aggregateValue += (float)intTemp;
+                                break;
+                            case TypeReal: memcpy(&floatTemp, (char *) buffer + offset, sizeof(float));
+                                aggregateValue += floatTemp;
+                                break;
+                            }
+                        }
+
                         switch (getAttribute().type) {
-                        case TypeInt: memcpy(&intTemp, buffer + offset, sizeof(int));
-                            aggregateValue += (float)intTemp;
-                            break;
-                        case TypeReal: memcpy(&floatTemp, buffer + offset, sizeof(float));
-                            aggregateValue += floatTemp;
-                            break;
+                            case TypeInt: offset += sizeof(int);
+                                break;
+                            case TypeReal: offset += sizeof(float);
+                                break;
+                            case TypeVarChar:
+                                int len;
+                                memcpy(&len, (char*)buffer + offset, sizeof(int));
+                                offset += sizeof(int) + len;
+                                break;
                         }
                     }
 
-                    switch (getAttribute().type) {
-                        case TypeInt: offset += sizeof(int);
-                            break;
-                        case TypeReal: offset += sizeof(float);
-                            break;
-                        case TypeVarChar:
-                            int len;
-                            memcpy(&len, (char*)buffer + offset, sizeof(int));
-                            offset += sizeof(int) + len;
-                            break;
-                    }
-                }
+                    // reset offset
+                    offset = indicatorSize;
+                    counter++;
+                } // end of whle loop
+            } else {
+                float value;
+                float aggReturn;
+                // if it is a group by then do the following
+                while (getIterator()->getNextTuple(buffer) != RM_EOF) {
+                    // find in hashmap
+                    for (Attribute attr: attrs) {
+                        if (attr.name == groupAttr.name) {
+                             
+                        }
+                        if (attr.name == aggregateAttr.name) {
+                            
+                        }
 
-                // reset offset
-                offset = indicatorSize;
-                counter++;
+                        switch (getAttribute().type) {
+                            case TypeInt:
+                                //auto hashVal = intAggMap.find(value);
+                                
+                                break;
+                            case TypeReal: 
+                                break;
+                            case TypeVarChar:
+                                int len;
+                                memcpy(&len, (char*)buffer + offset, sizeof(int));
+                                offset += sizeof(int) + len;
+                                break;
+                        } //end of switch
+                    } // end of for lop
+                } // end of while loop
+
             }
             break;
         case COUNT:
             while (getIterator()->getNextTuple(buffer) != RM_EOF) {
                 Attribute groupAttr = getGroupAttribute();
-//                if (groupAttr == NULL) {
-//                    aggregateValue++;
-//                } else {
-//
-//                }
+                if (isGroupBy) {
+                    
+                    aggregateValue++;
+                } else {
+
+                }
             }
             break;
         default:
@@ -1204,7 +1238,7 @@ RC joinBufferData(void *buffer1, int buffer1Len, int numAttrs1, void* buffer2, i
             //currentByte |= mask;
 
             // get bit of right buffer at position i
-            memcpy(&rightByte, buffer2 + (i / 8), sizeof(char));
+            memcpy(&rightByte, (char *) buffer2 + (i / 8), sizeof(char));
             char mask = 128 >> i % 8;
 
             // clear other bits that we don't want
