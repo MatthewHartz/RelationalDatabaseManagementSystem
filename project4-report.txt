@@ -1,0 +1,34 @@
+-- Filter --
+This classes getNextTuple function filters out rows that does not mean a certain condition on a particular attribute.
+To do this we iterate over each tuple using the provided iterators getNextTuple function.  We then search through
+the tuple until we find the attribute that matches the attribute the condition is for.  Then we extract this value
+and compare it against the condition.  If the condition succeeds with this value, we return this tuple back.
+
+-- Project --
+This classes getNextTuple function projects out the attributes provided by the constructor. To do this, we iterate over
+each tuple using the provided iterators getNextTUple function.  First we generate a nullIndicator based on the amount
+of attribtues we want to project.  Then as we iterate over each attribute, we need to update this null indicator to
+reflect if any of these attribtues are null.  And, as we are doing this, we need to also write this attribute value
+to the correct position in the buffer.  Once this has been done, we return the buffer back.
+
+
+-- Block Nested Loop Join --
+This classes getNextTUple function will equijoin two tables on a given attribute.  In this function we are provided
+a number of records in which we can store in memory.  So first, we will load a hashmap with the number of records provided
+from the left join table.  Then we will iterate over the whole right table check the hashmap if the key from the left table
+matches the key on the right table (key being the attribute we are joining on).  If they both match we then return that tuple.
+To save state, we populate the whole hashmap first with the number of records, then set a boolean stating it does not need
+to be populated again.  This boolean will not get changed until we have completely iterated over the whole right table.  
+Otherwise, this would be incredibly wasteful.  From here, both iterates getNextTUples functions will save state of where
+they are currently in the table so we don't have to worry about finding our way back to the current position.
+
+-- Index Nested Loop Join --
+This classes getNextTuple function works very similar to BNL except it does not use a hashmap to assist with speed.  This 
+function will simply just iterate over the left table and then set the iterator for the right table with the attribute's value 
+that is being joined on.  If this returns back any records, then simply return that record. Otherwise, loop over the left 
+tables next tuple.  Left tables getNextTuple function will simply save state to prevent having to retrace your steps.
+
+-- Basic Aggregation --
+This classes getNextTUple will simply return a real value with the value of the aggregation on any particular attribute.
+To do this, we simply iterate over a table and based on which AggregationOperator, we will collect the attributes value
+and compare/sum up that value.  ONce the aggregate value has been calculated, we return that back to the caller.
