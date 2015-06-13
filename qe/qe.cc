@@ -954,6 +954,21 @@ RC BNLJoin::getNextTuple(void *data) {
 
     // if we reached this point, then we need to refresh the memory and start again
     innerFinished = true;
+    for (auto it = intHashMap.begin(); it != intHashMap.end(); ++ it) {
+        for (intMapEntry im : it->second) {
+            free(im.buffer);
+        }
+    }
+    for (auto it = realHashMap.begin(); it != realHashMap.end(); ++ it) {
+        for (realMapEntry im : it->second) {
+            free(im.buffer);
+        }
+    }
+    for (auto it = varCharHashMap.begin(); it != varCharHashMap.end(); ++ it) {
+        for (varCharMapEntry im : it->second) {
+            free(im.buffer);
+        }
+    }
     intHashMap.clear();
     realHashMap.clear();
     varCharHashMap.clear();

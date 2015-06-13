@@ -39,9 +39,9 @@ struct varCharMapEntry
 // typedefs
 typedef enum{ COUNT=0, SUM, AVG, MIN, MAX } AggregateOp;
 
-typedef unordered_map<int, vector<intMapEntry>> intMap;
-typedef unordered_map<float, vector<realMapEntry>> realMap;
-typedef unordered_map<string, vector<varCharMapEntry>> varCharMap;
+typedef map<int, vector<intMapEntry>> intMap;
+typedef map<float, vector<realMapEntry>> realMap;
+typedef map<string, vector<varCharMapEntry>> varCharMap;
 typedef map<int, float> intAggregateMap;
 typedef map<float, float> realAggregateMap;
 typedef map<string, float> varCharAggregateMap;
