@@ -425,7 +425,7 @@ class Aggregate : public Iterator {
 
         // setters
         void setIterator(Iterator *input) { aggregateIterator = input; };
-        void setAttribute(Attribute attr) { aggregateAttr = attr; };
+        void setAggAttribute(Attribute attr) { aggregateAttr = attr; };
         void setGroupAttribute(Attribute attr) { groupAttr = attr; };
         void setOperator(AggregateOp op) { aggregateOp = op; };
         void setValue(float value) { aggregateValue = value; };
@@ -433,10 +433,11 @@ class Aggregate : public Iterator {
 
         // getters
         Iterator* getIterator(void) { return aggregateIterator; };
-        Attribute getAttribute(void) { return aggregateAttr; };
+        Attribute getAggAttribute(void) { return aggregateAttr; };
         Attribute getGroupAttribute(void) { return groupAttr; };
         AggregateOp getOperator(void) { return aggregateOp; };
         float getValue(void) { return aggregateValue; };
+        int getGroupPosition(void) { return groupPosition; };
 
     private:
         Iterator *aggregateIterator;
@@ -445,6 +446,7 @@ class Aggregate : public Iterator {
         bool isGroupBy = false;
         AggregateOp aggregateOp;
         float aggregateValue; // This is the value that is returned from aggregate ie MAX,MIN,COUNT,AVG,SUM
+        int groupPosition = 0; // this saves the state when getting the next tuple with a group by statement
 
         // for group based aggregations
         intMap intHashMap;
